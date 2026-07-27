@@ -1,2 +1,9 @@
 node_modules/
-
+dist/
+uploads/
+.env
+*.log
+.DS_Store
+secrets/
+**/firebase-adminsdk*.json
+**/*firebase*adminsdk*.json
