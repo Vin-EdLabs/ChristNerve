@@ -12,15 +12,18 @@ fi
 
 echo "==> Backend install + build (+ migrate/seed)"
 cd "$ROOT/backend"
-# Need typescript for build — install all, prune later
-npm install
+# Need typescript for build — force install of all deps even if NODE_ENV=production
+npm install --include=dev
 SEED_DEMO=1 NODE_ENV=production npm run build
 npm prune --omit=dev || true
 
 echo "==> Frontend install + build"
 cd "$ROOT/frontend"
-npm install
+# vite + tsc are devDependencies; NODE_ENV=production would skip them
+npm install --include=dev
 npm run build
+# Keep vite out of runtime tree if desired (static dist already built)
+npm prune --omit=dev || true
 
 # Production static + uploads paths
 if [ -d /var/www/christnerve ]; then
