@@ -162,41 +162,65 @@ export default function AnnouncementsPage() {
         />
       ) : (
         <div className="ann-list">
-          {items.map((item) => (
-            <article key={item.id} className="card ann-card">
-              <div className="ann-card-top">
-                <div className="ann-title-row">
-                  <h3>{item.title}</h3>
-                  {item.is_pinned && <Badge variant="visitor">Pinned</Badge>}
-                </div>
-                {canManage && (
-                  <div className="ann-card-actions">
-                    <Button variant="ghost" onClick={() => togglePin(item)}>
-                      <Pin size={16} />
-                      {item.is_pinned ? 'Unpin' : 'Pin'}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      loading={deletingId === item.id}
-                      onClick={() => void handleDelete(item)}
-                    >
-                      <Trash2 size={16} />
-                      Delete
-                    </Button>
+          {items.map((item) => {
+            const author =
+              item.created_by_name ||
+              [item.created_by_first_name, item.created_by_last_name]
+                .filter(Boolean)
+                .join(' ') ||
+              'Church office';
+            const when = item.publish_date || item.created_at;
+            const audienceLabel =
+              item.audience === 'all' || !item.audience
+                ? 'All Members'
+                : item.audience === 'members'
+                  ? 'Members'
+                  : item.department_name || item.audience;
+            return (
+              <article
+                key={item.id}
+                className={`card ann-card${item.is_pinned ? ' ann-card--pinned' : ''}`}
+              >
+                <div className="ann-card-top">
+                  <div className="ann-title-row">
+                    {item.is_pinned && (
+                      <span className="ann-pin-label">
+                        <Pin size={14} /> Pinned
+                      </span>
+                    )}
+                    <h3>{item.title}</h3>
                   </div>
-                )}
-              </div>
-              <p className="ann-body">{item.body}</p>
-              <p className="ann-meta">
-                {item.publish_date
-                  ? new Date(item.publish_date).toLocaleDateString('en-GH')
-                  : '—'}
-                {' · '}
-                {item.audience || 'all'}
-              </p>
-            </article>
-          ))}
+                  {canManage && (
+                    <div className="ann-card-actions">
+                      <Button variant="ghost" onClick={() => togglePin(item)}>
+                        <Pin size={16} />
+                        {item.is_pinned ? 'Unpin' : 'Pin'}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={deletingId === item.id}
+                        onClick={() => void handleDelete(item)}
+                      >
+                        <Trash2 size={16} />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <p className="ann-body">{item.body}</p>
+                <div className="ann-footer">
+                  <span className="ann-meta">
+                    Posted by {author}
+                    {when
+                      ? ` · ${new Date(when).toLocaleDateString('en-GH')}`
+                      : ''}
+                  </span>
+                  <Badge variant="visitor">{audienceLabel}</Badge>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 
@@ -204,7 +228,8 @@ export default function AnnouncementsPage() {
         <Modal
           open={open}
           onClose={() => !saving && setOpen(false)}
-          title="Create Announcement"
+          title="Add Announcement"
+          subtitle="Fill in the details below"
         >
           <form className="ann-form" onSubmit={handleCreate}>
             <Input

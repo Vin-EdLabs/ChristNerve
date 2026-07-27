@@ -143,6 +143,11 @@ export default function ChatPage() {
       navigate('/login', { replace: true, state: { from: returnTo } });
       return;
     }
+    if (accountType !== 'member') {
+      toast.error('Only church members can use in-app chat. Use WhatsApp from checkout.');
+      navigate('/market/cart', { replace: true });
+      return;
+    }
 
     let cancelled = false;
     (async () => {
@@ -190,6 +195,7 @@ export default function ChatPage() {
   }, [
     authLoading,
     isAuthenticated,
+    accountType,
     conversationId,
     params,
     navigate,

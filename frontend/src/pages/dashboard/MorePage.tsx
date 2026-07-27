@@ -3,6 +3,8 @@ import {
   Calendar,
   CalendarCheck,
   ChevronRight,
+  HandHeart,
+  HeartHandshake,
   Home,
   LogOut,
   Megaphone,
@@ -14,10 +16,14 @@ import {
   Store,
   Sun,
   UserCog,
+  UserRoundSearch,
+  UsersRound,
   Wallet,
+  Church,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 type LinkItem = {
   to: string;
@@ -27,31 +33,39 @@ type LinkItem = {
 };
 
 const STAFF_LINKS: LinkItem[] = [
-  { to: '/users', label: 'Users & Roles', icon: UserCog, desc: 'Manage staff access' },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck, desc: 'Record services' },
+  { to: '/cell-groups', label: 'Cell Groups', icon: UsersRound, desc: 'Small groups' },
+  { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart, desc: 'Pastoral prayer list' },
+  { to: '/follow-up', label: 'Follow-Up', icon: UserRoundSearch, desc: 'Members needing contact' },
+  { to: '/welfare', label: 'Welfare', icon: HeartHandshake, desc: 'Care cases' },
   { to: '/events', label: 'Events', icon: Calendar, desc: 'Upcoming gatherings' },
   { to: '/announcements', label: 'Announcements', icon: Megaphone, desc: 'Church notices' },
   { to: '/departments', label: 'Departments', icon: Network, desc: 'Teams & ministries' },
+  { to: '/church-page', label: 'Church Page', icon: Church, desc: 'Visit page & join requests' },
+  { to: '/users', label: 'Users & Roles', icon: UserCog, desc: 'Manage staff access' },
   { to: '/market', label: 'Marketplace', icon: Store, desc: 'Member businesses' },
   { to: '/audit', label: 'Audit Log', icon: ScrollText, desc: 'Church activity trail' },
   { to: '/settings', label: 'Settings', icon: Settings, desc: 'Church profile' },
 ];
 
-const FINANCE_LINKS: LinkItem[] = [
-  { to: '/finance', label: 'Finance', icon: Wallet, desc: 'Tithes, offerings, expenses' },
-  { to: '/audit', label: 'Audit Log', icon: ScrollText, desc: 'Finance activity trail' },
-  { to: '/settings', label: 'Settings', icon: Settings, desc: 'Your profile' },
-];
-
 const MEMBER_LINKS: LinkItem[] = [
-  { to: '/', label: 'Home', icon: Home, desc: 'Attendance & department' },
-  { to: '/my-attendance', label: 'My Attendance', icon: CalendarCheck, desc: 'Your service check-ins' },
-  { to: '/my-department', label: 'My Department', icon: Network, desc: 'Where you serve' },
+  { to: '/', label: 'Home', icon: Home, desc: 'Your church home' },
+  { to: '/my-department', label: 'My Department', icon: Network, desc: 'Team, roster & meetings' },
+  { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart, desc: 'Send prayer to pastors' },
+  { to: '/welfare', label: 'Welfare', icon: HeartHandshake, desc: 'Request practical care' },
   { to: '/announcements', label: 'Announcements', icon: Megaphone, desc: 'Church notices' },
   { to: '/market', label: 'Marketplace', icon: Store, desc: 'Browse member shops' },
   { to: '/market/my-listings', label: 'My shop', icon: Store, desc: 'Your listings & orders' },
   { to: '/market/chat', label: 'Messages', icon: MessageCircle, desc: 'Buyer & seller chats' },
-  { to: '/settings', label: 'Settings', icon: Settings, desc: 'Username & password' },
+  { to: '/settings', label: 'Settings', icon: Settings, desc: 'Photo, phone & PIN' },
+];
+
+const FINANCE_LINKS: LinkItem[] = [
+  { to: '/finance', label: 'Finance Dashboard', icon: Wallet, desc: 'Treasury overview' },
+  { to: '/finance/giving', label: 'Giving', icon: Wallet, desc: 'Tithes & offerings' },
+  { to: '/finance/expenses', label: 'Expenses', icon: Wallet, desc: 'Church expenses' },
+  { to: '/audit', label: 'Audit Log', icon: ScrollText, desc: 'Finance activity trail' },
+  { to: '/settings', label: 'Settings', icon: Settings, desc: 'Your profile' },
 ];
 
 export default function MorePage() {
@@ -69,9 +83,17 @@ export default function MorePage() {
   return (
     <div className="more-page">
       <div className="more-profile card glass-card">
-        <div className="avatar avatar-lg">
-          {`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase()}
-        </div>
+        {resolveMediaUrl(user?.avatar_url) ? (
+          <img
+            src={resolveMediaUrl(user?.avatar_url)}
+            alt=""
+            className="avatar avatar-lg"
+          />
+        ) : (
+          <div className="avatar avatar-lg">
+            {`${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase()}
+          </div>
+        )}
         <div>
           <h2>
             {user?.first_name} {user?.last_name}

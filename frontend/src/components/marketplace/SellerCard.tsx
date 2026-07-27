@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import type { ChurchMember, ChurchTenant } from '../../types';
 import { VerifiedBadge } from '../members/VerifiedBadge';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 export interface SellerCardProps {
   member: Pick<
@@ -12,19 +13,13 @@ export interface SellerCardProps {
   showLink?: boolean;
 }
 
-const uploadsBase = import.meta.env.VITE_UPLOADS_URL || '';
-
 export const SellerCard: React.FC<SellerCardProps> = ({
   member,
   church,
   showLink = true,
 }) => {
   const initials = `${member.first_name?.[0] || ''}${member.last_name?.[0] || ''}`.toUpperCase();
-  const avatarSrc = member.avatar_url
-    ? member.avatar_url.startsWith('http')
-      ? member.avatar_url
-      : `${uploadsBase}${member.avatar_url}`
-    : undefined;
+  const avatarSrc = resolveMediaUrl(member.avatar_url);
   const year = member.membership_date
     ? new Date(member.membership_date).getFullYear()
     : null;
@@ -36,7 +31,7 @@ export const SellerCard: React.FC<SellerCardProps> = ({
       ) : (
         <div className="avatar">{initials}</div>
       )}
-      <div>
+      <div className="seller-card-copy">
         <div className="seller-card-name">
           {member.first_name} {member.last_name}
         </div>
@@ -45,6 +40,9 @@ export const SellerCard: React.FC<SellerCardProps> = ({
           {church?.name && <span>— {church.name}</span>}
           {year && <span>Member since {year}</span>}
         </div>
+        {showLink && member.marketplace_slug && (
+          <span className="seller-card-shop">Browse their shop →</span>
+        )}
       </div>
     </div>
   );

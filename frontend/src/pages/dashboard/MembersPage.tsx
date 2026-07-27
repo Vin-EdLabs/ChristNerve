@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { List, Plus, Search, Users } from 'lucide-react';
+import { Plus, Search, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import type { ChurchMember } from '../../types';
 import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { MemberTable } from '../../components/members/MemberTable';
-import { MemberCard } from '../../components/members/MemberCard';
 import { MemberForm } from '../../components/members/MemberForm';
 import type { MemberFormValues } from '../../components/members/MemberForm';
-import { PageTabs } from '../../components/ui/PageTabs';
 
 function asMembers(payload: unknown): ChurchMember[] {
   if (Array.isArray(payload)) return payload as ChurchMember[];
@@ -27,7 +26,7 @@ export default function MembersPage() {
   const [members, setMembers] = useState<ChurchMember[]>([]);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<'list' | 'add'>('list');
+  const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<ChurchMember | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +46,7 @@ export default function MembersPage() {
   }, []);
 
   useEffect(() => {
-    load(query);
+    void load(query);
   }, [load, query]);
 
   useEffect(() => {
@@ -57,26 +56,43 @@ export default function MembersPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setTab('add');
+    setPanelOpen(true);
   };
 
   const openEdit = (member: ChurchMember) => {
     setEditing(member);
-    setTab('add');
+    setPanelOpen(true);
   };
 
-  const handleSubmit = async (data: MemberFormValues) => {
+  const closePanel = () => {
+    if (saving) return;
+    setPanelOpen(false);
+    setEditing(null);
+  };
+
+  const handleSubmit = async (data: MemberFormValues, avatarFile?: File | null) => {
     setSaving(true);
     try {
+      let memberId = editing?.id;
       if (editing?.id) {
-        await api.put(`/members/${editing.id}`, data);
+        const { avatar_url: _a, ...rest } = data;
+        await api.put(`/members/${editing.id}`, rest);
         toast.success('Member updated successfully');
       } else {
-        await api.post('/members', data);
+        const { avatar_url: _a, ...rest } = data;
+        const res = await api.post('/members', rest);
+        memberId = res.data?.id ?? res.data?.member?.id ?? res.data?.data?.id;
         toast.success('Member added successfully');
       }
+
+      if (avatarFile && memberId) {
+        const fd = new FormData();
+        fd.append('avatar', avatarFile);
+        await api.post(`/members/${memberId}/avatar`, fd);
+      }
+
+      setPanelOpen(false);
       setEditing(null);
-      setTab('list');
       await load(query);
     } catch (err: unknown) {
       const msg =
@@ -94,95 +110,55 @@ export default function MembersPage() {
         <div className="page-head-icon">
           <Users size={22} />
         </div>
-        <div>
-          <h2 className="page-head-title">Members Management</h2>
+        <div style={{ flex: 1 }}>
+          <h2 className="page-head-title">Members</h2>
           <p className="page-head-sub">
-            Manage congregation profiles, verification, and storefronts.
+            Congregation profiles, verification, and storefronts.
           </p>
+        </div>
+        <Button variant="primary" onClick={openCreate}>
+          <Plus size={16} /> Add Member
+        </Button>
+      </div>
+
+      <div className="members-toolbar">
+        <div className="members-search">
+          <Input
+            placeholder="Search name, ID, or phone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            icon={<Search size={16} />}
+          />
         </div>
       </div>
 
-      <PageTabs
-        active={tab}
-        onChange={(id) => {
-          if (id === 'add') {
-            setEditing(null);
-            setTab('add');
-          } else {
-            setEditing(null);
-            setTab('list');
-          }
-        }}
-        tabs={[
-          { id: 'list', label: 'View All', icon: <List size={16} /> },
-          {
-            id: 'add',
-            label: editing ? 'Edit Member' : 'Add Member',
-            icon: <Plus size={16} />,
-          },
-        ]}
-      />
-
-      {tab === 'list' && (
+      {loading ? (
+        <div className="members-skeleton">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : members.length === 0 ? (
+        <EmptyState
+          title="No members yet"
+          description="Add your first member — the form slides in from the right."
+          actionLabel="Add Member"
+          onAction={openCreate}
+        />
+      ) : (
         <>
-          <div className="members-toolbar">
-            <div className="members-search">
-              <Input
-                placeholder="Search name, ID, or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                icon={<Search size={16} />}
-              />
-            </div>
-            <select className="input sa-select" defaultValue="active" style={{ maxWidth: 140 }}>
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="visitor">Visitors</option>
-            </select>
-          </div>
-
-          {loading ? (
-            <div className="members-skeleton">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : members.length === 0 ? (
-            <EmptyState
-              title="No members yet. Add your first member to get started."
-              description="Use the Add Member tab — forms open inline, not in a popup."
-              actionLabel="Add Member"
-              onAction={openCreate}
-            />
-          ) : (
-            <>
-              <div className="members-desktop-only">
-                <MemberTable members={members} onEdit={openEdit} onAdd={openCreate} />
-              </div>
-              <div className="members-mobile-only">
-                {members.map((m) => (
-                  <MemberCard key={m.id} member={m} />
-                ))}
-              </div>
-              <p className="members-count">
-                Showing {members.length} of {members.length} members
-              </p>
-            </>
-          )}
+          <MemberTable members={members} onEdit={openEdit} onAdd={openCreate} />
+          <p className="members-count">Showing {members.length} members</p>
         </>
       )}
 
-      {tab === 'add' && (
-        <MemberForm
-          variant="inline"
-          member={editing}
-          onSubmit={handleSubmit}
-          loading={saving}
-          onClose={() => {
-            setEditing(null);
-            setTab('list');
-          }}
-        />
-      )}
+      <MemberForm
+        open={panelOpen}
+        member={editing}
+        onSubmit={handleSubmit}
+        loading={saving}
+        onClose={closePanel}
+      />
     </div>
   );
 }

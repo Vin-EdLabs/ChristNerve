@@ -33,8 +33,12 @@ open http://localhost:5174/market?church=pka
 createdb christnerve
 psql christnerve < database/schema.sql
 psql christnerve < database/seed.sql
+# Also run any migrate-*.sql files under database/ if needed
+psql christnerve < database/migrate-notifications.sql
 
-cp backend/.env.production.example backend/.env   # fill secrets
+cp backend/.env.production.example backend/.env   # fill secrets + Firebase Admin key
+# Ensure frontend/.env.production has VITE_FIREBASE_* + VAPID key (baked at build)
+
 mkdir -p /var/www/christnerve/uploads/church
 
 chmod +x deploy.sh && ./deploy.sh
@@ -44,6 +48,8 @@ sudo cp deploy/nginx/christnerve /etc/nginx/sites-available/christnerve
 sudo ln -sf /etc/nginx/sites-available/christnerve /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d christnerve.scholarnerve.com
+# Wildcard for church hosts (preferred):
+# sudo certbot certonly --dns-cloudflare -d '*.scholarnerve.com' -d scholarnerve.com
 ```
 
 Cloudflare DNS:
@@ -54,3 +60,38 @@ Cloudflare DNS:
 | A    | *           | YOUR_VPS_IP | Proxied |
 
 Church hosts look like `ch-pka.scholarnerve.com` — ScholarNerve’s other hosts are untouched.
+
+### Push notifications (required for production)
+
+Firebase Console → Project **christnerve** → Project settings → Cloud Messaging:
+
+1. Copy **Web Push certificates** key into:
+   - `frontend/.env.production` → `VITE_FIREBASE_VAPID_KEY`
+   - `backend/.env` → `FIREBASE_WEB_VAPID_KEY`
+2. Add **Authorized domains** (Authentication → Settings → Authorized domains):
+   - `christnerve.scholarnerve.com`
+   - `scholarnerve.com`
+   - each live church host you care about, or use custom domain allowlist carefully
+3. Backend must have Firebase Admin credentials (`FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` or `secrets/firebase-adminsdk.json`).
+4. HTTPS is mandatory — push will not work on plain HTTP.
+
+#### Device checklist
+
+| Platform | How to enable | Badge |
+|----------|---------------|-------|
+| **Desktop** (Chrome/Edge) | Allow notifications when prompted after login | Bell badge + dock badge (Chromium) |
+| **Android** (Chrome) | Allow notifications; optional Add to Home Screen | Bell badge + home-screen icon badge |
+| **iPhone (Safari)** | Share → **Add to Home Screen**, open the icon, then allow notifications | Bell badge + icon badge (iOS 16.4+) |
+
+After deploy, verify:
+
+```bash
+curl -s https://christnerve.scholarnerve.com/api/superadmin/notifications/health \
+  -H "Authorization: Bearer YOUR_SUPERADMIN_JWT"
+# Expect: fcm_configured: true, device token counts
+```
+
+Send a test from Super Admin → Monitor / notifications, then confirm:
+- toast / system notification appears
+- bell shows unread count
+- home-screen / dock badge updates (installed PWA)

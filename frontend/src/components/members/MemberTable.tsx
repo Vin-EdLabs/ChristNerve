@@ -1,19 +1,16 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Eye, Users } from 'lucide-react';
+import { Pencil, Users } from 'lucide-react';
 import type { ChurchMember } from '../../types';
 import { Badge, statusToBadgeVariant } from '../ui/Badge';
-import { VerifiedBadge } from './VerifiedBadge';
-import { MemberCard } from './MemberCard';
 import { EmptyState } from '../ui/EmptyState';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 export interface MemberTableProps {
   members: ChurchMember[];
   onEdit?: (member: ChurchMember) => void;
   onAdd?: () => void;
 }
-
-const uploadsBase = import.meta.env.VITE_UPLOADS_URL || '';
 
 export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onAdd }) => {
   const navigate = useNavigate();
@@ -33,8 +30,8 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onAdd
   return (
     <>
       <div className="members-desktop">
-        <div className="table-wrap">
-          <table className="data-table">
+        <div className="members-table-wrap">
+          <table className="members-data-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -42,63 +39,57 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onAdd
                 <th>Phone</th>
                 <th>Department</th>
                 <th>Status</th>
-                <th>Verified</th>
-                <th>Actions</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {members.map((m) => {
-                const initials = `${m.first_name?.[0] || ''}${m.last_name?.[0] || ''}`.toUpperCase();
-                const avatarSrc = m.avatar_url
-                  ? m.avatar_url.startsWith('http')
-                    ? m.avatar_url
-                    : `${uploadsBase}${m.avatar_url}`
-                  : undefined;
+                const initials =
+                  `${m.first_name?.[0] || ''}${m.last_name?.[0] || ''}`.toUpperCase();
+                const avatarSrc = resolveMediaUrl(m.avatar_url);
 
                 return (
                   <tr key={m.id} onClick={() => navigate(`/members/${m.id}`)}>
                     <td>
-                      <div className="table-avatar-cell">
+                      <div className="members-name-cell">
                         {avatarSrc ? (
-                          <img src={avatarSrc} alt="" className="avatar avatar-sm" />
+                          <img src={avatarSrc} alt="" className="avatar" />
                         ) : (
-                          <div className="avatar avatar-sm">{initials}</div>
+                          <div className="avatar">{initials}</div>
                         )}
-                        <span>
+                        <strong>
                           {m.first_name} {m.last_name}
-                        </span>
+                        </strong>
                       </div>
                     </td>
-                    <td className="mono">{m.member_number || '—'}</td>
-                    <td>{m.phone || '—'}</td>
-                    <td>{m.department || '—'}</td>
+                    <td className="mono" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {m.member_number || '—'}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                      {m.phone || '—'}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                      {m.department || '—'}
+                    </td>
                     <td>
                       <Badge variant={statusToBadgeVariant(m.membership_status)}>
                         {m.membership_status}
                       </Badge>
                     </td>
-                    <td>{m.is_verified ? <VerifiedBadge /> : '—'}</td>
                     <td>
-                      <div className="flex gap-8" onClick={(e) => e.stopPropagation()}>
+                      {onEdit && (
                         <button
                           type="button"
-                          className="btn btn-ghost btn-sm btn-icon"
-                          aria-label="View"
-                          onClick={() => navigate(`/members/${m.id}`)}
+                          className="row-action"
+                          aria-label="Edit"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(m);
+                          }}
                         >
-                          <Eye size={16} />
+                          <Pencil size={16} />
                         </button>
-                        {onEdit && (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm btn-icon"
-                            aria-label="Edit"
-                            onClick={() => onEdit(m)}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -108,12 +99,38 @@ export const MemberTable: React.FC<MemberTableProps> = ({ members, onEdit, onAdd
         </div>
       </div>
 
-      <div className="members-mobile">
-        <div className="member-cards">
-          {members.map((m) => (
-            <MemberCard key={m.id} member={m} />
-          ))}
-        </div>
+      <div className="members-mobile-list">
+        {members.map((m) => {
+          const initials =
+            `${m.first_name?.[0] || ''}${m.last_name?.[0] || ''}`.toUpperCase();
+          const avatarSrc = resolveMediaUrl(m.avatar_url);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              className="members-mobile-row"
+              onClick={() => navigate(`/members/${m.id}`)}
+            >
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="" className="avatar" />
+              ) : (
+                <div className="avatar">{initials}</div>
+              )}
+              <div className="members-mobile-mid">
+                <strong>
+                  {m.first_name} {m.last_name}
+                </strong>
+                <span>
+                  {m.member_number || '—'}
+                  {m.department ? ` · ${m.department}` : ''}
+                </span>
+              </div>
+              <Badge variant={statusToBadgeVariant(m.membership_status)}>
+                {m.membership_status}
+              </Badge>
+            </button>
+          );
+        })}
       </div>
     </>
   );

@@ -280,9 +280,9 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
     const slug = req.params.slug.toLowerCase();
 
     const churchResult = await pool.query(
-      `SELECT id, name, slug, tagline, description, logo_url, banner_url,
+      `SELECT id, name, slug, tagline, description, logo_url, banner_url, visit_hero_url,
               address, city, region, phone, email, denomination, founded_year,
-              brand_color, secondary_color, short_name
+              brand_color, secondary_color, short_name, youtube_url, visit_welcome
        FROM church_tenants
        WHERE slug = $1 AND is_active = true`,
       [slug]
@@ -295,7 +295,7 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
 
     const church = churchResult.rows[0];
 
-    const [events, listings, memberCount] = await Promise.all([
+    const [events, listings, memberCount, gallery] = await Promise.all([
       pool.query(
         `SELECT id, title, description, event_type, start_datetime, end_datetime,
                 location, banner_url
@@ -329,6 +329,14 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
          WHERE church_id = $1 AND membership_status = 'active'`,
         [church.id]
       ),
+      pool.query(
+        `SELECT id, image_url, caption, display_order
+         FROM church_gallery_images
+         WHERE church_id = $1
+         ORDER BY display_order ASC, id ASC
+         LIMIT 12`,
+        [church.id]
+      ),
     ]);
 
     res.json({
@@ -336,6 +344,7 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
       upcoming_events: events.rows,
       featured_listings: listings.rows,
       member_count: memberCount.rows[0].total,
+      gallery: gallery.rows,
     });
   } catch (err) {
     console.error('Public church error:', err);

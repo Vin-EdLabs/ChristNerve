@@ -89,6 +89,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               <Home size={16} />
               Home
             </Link>
+            <Link to="/visit" className="public-navbar-link">
+              Visit church
+            </Link>
             <Link
               to="/market/chat"
               className={`public-navbar-link${chatActive ? ' is-active' : ''}`}
@@ -143,7 +146,14 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               className="public-navbar-menu-item public-navbar-menu-item--mobile-only"
               onClick={() => setMenuOpen(false)}
             >
-              <Home size={16} /> Church home
+              <Home size={16} /> Portal home
+            </Link>
+            <Link
+              to="/visit"
+              className="public-navbar-menu-item"
+              onClick={() => setMenuOpen(false)}
+            >
+              Visit church
             </Link>
           </div>
         )}

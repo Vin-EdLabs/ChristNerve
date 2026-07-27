@@ -19,6 +19,8 @@ import { Spinner } from '../../components/ui/Spinner';
 import { NotificationBell } from '../../components/notifications/NotificationBell';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enablePushNotifications } from '../../lib/firebase';
+import { clearChurchSlug, platformDomainUrl } from '../../utils/tenantHost';
+import { NotificationPrompt } from '../../components/notifications/NotificationPrompt';
 import './SuperAdminPage.css';
 
 const TOKEN_KEY = 'superadmin_token';
@@ -381,10 +383,11 @@ export default function SuperAdminLayout() {
             {showLabels && (
               <a
                 className="sa-nav-link"
-                href="/"
+                href={platformDomainUrl('/')}
                 onClick={(e) => {
                   e.preventDefault();
-                  window.location.href = '/';
+                  clearChurchSlug();
+                  window.location.href = platformDomainUrl('/');
                 }}
               >
                 <ExternalLink size={16} />
@@ -445,6 +448,7 @@ export default function SuperAdminLayout() {
           </header>
 
           <div className="sa-main-body">
+            <NotificationPrompt mode="platform" />
             {loading && !stats ? (
               <div className="sa-loading">
                 <Spinner size="lg" />

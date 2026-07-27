@@ -111,13 +111,14 @@ export const GivingForm: React.FC<GivingFormProps> = ({
       open={open}
       onClose={onClose}
       title="Record Giving"
+      subtitle="Fill in the details below"
       footer={
         <>
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Cancel
-          </Button>
           <Button variant="primary" type="submit" form="giving-form" loading={loading}>
             Record Giving
+          </Button>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
           </Button>
         </>
       }

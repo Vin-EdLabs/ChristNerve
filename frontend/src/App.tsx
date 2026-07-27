@@ -28,10 +28,18 @@ import DepartmentsPage from './pages/dashboard/DepartmentsPage';
 import SettingsPage from './pages/dashboard/SettingsPage';
 import MorePage from './pages/dashboard/MorePage';
 import UsersPage from './pages/dashboard/UsersPage';
+import ChurchPageAdmin from './pages/dashboard/ChurchPageAdmin';
 import AuditPage from './pages/dashboard/AuditPage';
 import MyAttendancePage from './pages/dashboard/MyAttendancePage';
 import MyDepartmentPage from './pages/dashboard/MyDepartmentPage';
+import VisitChurchPage from './pages/public/VisitChurchPage';
+import PrayerRequestsPage from './pages/dashboard/PrayerRequestsPage';
+import FollowUpPage from './pages/dashboard/FollowUpPage';
+import WelfarePage from './pages/dashboard/WelfarePage';
+import CellGroupsPage from './pages/dashboard/CellGroupsPage';
 import MarketplacePage from './pages/marketplace/MarketplacePage';
+import { Spinner } from './components/ui/Spinner';
+import { useAuth } from './contexts/AuthContext';
 import ListingDetailPage from './pages/marketplace/ListingDetailPage';
 import MemberStorefront from './pages/marketplace/MemberStorefront';
 import MyListingsPage from './pages/marketplace/MyListingsPage';
@@ -94,6 +102,28 @@ function PlatformApp() {
   );
 }
 
+/** Signed-in users get the portal dashboard at `/`. Guests go to login (visit page is `/visit` only). */
+function ChurchRoot() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return <Spinner fullPage size="lg" />;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname || '/' }}
+      />
+    );
+  }
+
+  return <DashboardLayout />;
+}
+
 function ChurchApp() {
   const slug = getChurchSlug();
 
@@ -126,17 +156,26 @@ function ChurchApp() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/setup-credentials" element={<SetupCredentialsPage />} />
+              <Route path="/visit" element={<VisitChurchPage />} />
+              <Route path="/about" element={<VisitChurchPage />} />
 
-              <Route path="/" element={<DashboardLayout />}>
+              <Route path="/" element={<ChurchRoot />}>
                 <Route index element={<DashboardHome />} />
                 <Route path="members" element={<MembersPage />} />
                 <Route path="members/:id" element={<MemberDetail />} />
                 <Route path="users" element={<UsersPage />} />
+                <Route path="church-page" element={<ChurchPageAdmin />} />
                 <Route path="attendance" element={<AttendancePage />} />
                 <Route path="finance" element={<FinancePage />} />
+                <Route path="finance/giving" element={<FinancePage />} />
+                <Route path="finance/expenses" element={<FinancePage />} />
                 <Route path="events" element={<EventsPage />} />
                 <Route path="announcements" element={<AnnouncementsPage />} />
                 <Route path="departments" element={<DepartmentsPage />} />
+                <Route path="prayer-requests" element={<PrayerRequestsPage />} />
+                <Route path="follow-up" element={<FollowUpPage />} />
+                <Route path="welfare" element={<WelfarePage />} />
+                <Route path="cell-groups" element={<CellGroupsPage />} />
                 <Route path="audit" element={<AuditPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="more" element={<MorePage />} />

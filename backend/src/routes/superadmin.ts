@@ -850,10 +850,28 @@ router.get('/notifications', async (_req: Request, res: Response) => {
        ORDER BY created_at DESC
        LIMIT 50`
     );
-    res.json({ data: result.rows });
+    const unread = result.rows.filter((r) => !r.is_read).length;
+    res.json({ data: result.rows, unread });
   } catch (err) {
     console.error('List platform notifications error:', err);
     res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+/**
+ * GET /api/superadmin/notifications/unread-count
+ */
+router.get('/notifications/unread-count', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM notifications
+       WHERE is_read = false
+         AND (user_type = 'superadmin' OR (church_id IS NULL AND user_id IS NULL))`
+    );
+    res.json({ count: result.rows[0]?.c ?? 0 });
+  } catch (err) {
+    console.error('Platform unread count error:', err);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
   }
 });
 
@@ -940,12 +958,18 @@ router.post('/notifications', async (req: Request, res: Response) => {
       `SELECT token FROM device_tokens WHERE user_type = 'superadmin'`
     );
     if (tokens.rows.length > 0) {
+      const unreadRes = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM notifications
+         WHERE is_read = false
+           AND (user_type = 'superadmin' OR (church_id IS NULL AND user_id IS NULL))`
+      );
       await sendFcmToTokens(
         tokens.rows.map((r) => r.token as string),
         {
           title: String(title),
           body: String(body),
           link: link ? String(link) : null,
+          badge: Number(unreadRes.rows[0]?.c) || 1,
         }
       );
     }

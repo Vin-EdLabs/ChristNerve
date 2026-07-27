@@ -41,7 +41,7 @@ interface ListingDetail extends Omit<MarketListing, 'images'> {
 }
 
 const PLACEHOLDER =
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80';
+  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80';
 
 function priceLabel(listing: Pick<MarketListing, 'price_label' | 'price_min' | 'price_max'>) {
   if (listing.price_label) return listing.price_label;
@@ -57,6 +57,7 @@ export default function ListingDetailPage() {
   const navigate = useNavigate();
   const { addToBag, checkoutListing } = useCart();
   const { isAuthenticated, user, accountType } = useAuth();
+  const canChat = isAuthenticated && accountType === 'member';
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState<ListingDetail | null>(null);
   const [activeImage, setActiveImage] = useState(0);
@@ -132,6 +133,7 @@ export default function ListingDetailPage() {
     phone: member?.phone || listing.phone,
     first_name: member?.first_name,
     last_name: member?.last_name,
+    marketplace_slug: member?.marketplace_slug,
     primary_image:
       listing.images?.[0]?.image_url || listing.primary_image || null,
     is_active: listing.is_active,
@@ -149,7 +151,8 @@ export default function ListingDetailPage() {
       return;
     }
     const path = `/market/chat?listing=${listing.id}`;
-    if (!isAuthenticated) {
+    if (!canChat) {
+      toast.error('Only church members can use in-app chat. Checkout to WhatsApp the seller.');
       navigate('/login', { state: { from: path } });
       return;
     }
@@ -164,6 +167,10 @@ export default function ListingDetailPage() {
             src={images[activeImage]}
             alt={listing.title}
             className="listing-main-img"
+            onError={(e) => {
+              const el = e.currentTarget;
+              if (el.src !== PLACEHOLDER) el.src = PLACEHOLDER;
+            }}
           />
           {images.length > 1 && (
             <div className="listing-thumbs">
@@ -174,7 +181,14 @@ export default function ListingDetailPage() {
                   className={`listing-thumb${activeImage === i ? ' listing-thumb--active' : ''}`}
                   onClick={() => setActiveImage(i)}
                 >
-                  <img src={src} alt="" />
+                  <img
+                    src={src}
+                    alt=""
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      if (el.src !== PLACEHOLDER) el.src = PLACEHOLDER;
+                    }}
+                  />
                 </button>
               ))}
             </div>
@@ -219,15 +233,22 @@ export default function ListingDetailPage() {
             <Button size="lg" variant="outline" onClick={() => checkoutListing(asCartListing)}>
               Go to checkout
             </Button>
-            {!isOwnListing && (
+            {!isOwnListing && canChat && (
               <Button size="lg" variant="ghost" onClick={messageSeller}>
                 <MessageCircle size={18} />
                 Message seller
               </Button>
             )}
-            <p className="listing-privacy-note">
-              Chat goes only to the member who listed this product — they can reply in Messages / Orders.
-            </p>
+            {!isOwnListing && !canChat && (
+              <p className="listing-privacy-note">
+                Guests can checkout and WhatsApp the seller. In-app chat is for church members after sign-in.
+              </p>
+            )}
+            {canChat && (
+              <p className="listing-privacy-note">
+                Chat goes only to the member who listed this product — they can reply in Messages / Orders.
+              </p>
+            )}
           </div>
 
           {listing.church && (
@@ -253,7 +274,7 @@ export default function ListingDetailPage() {
                   )}
                 </div>
               </div>
-              <Link to="/" className="btn btn-outline">
+              <Link to="/visit" className="btn btn-outline">
                 Visit Our Church Page →
               </Link>
             </div>
@@ -261,16 +282,58 @@ export default function ListingDetailPage() {
         </div>
       </div>
 
-      {(listing.more_from_seller?.length || 0) > 0 && (
-        <section className="container more-section">
-          <h2>More from {member?.first_name || 'this seller'}</h2>
-          <div className="more-grid">
-            {listing.more_from_seller!.map((item) => (
-              <ListingCard key={item.id} listing={item} />
-            ))}
+      <section className="vendor-browse">
+        <div className="container vendor-browse-inner">
+          <div className="vendor-browse-head">
+            <div>
+              <p className="vendor-browse-kicker">From this vendor</p>
+              <h2>
+                More from {member?.first_name || 'this seller'}
+                {member?.last_name ? ` ${member.last_name}` : ''}
+              </h2>
+              <p className="vendor-browse-sub">
+                Browse other goods and services from the same church member.
+              </p>
+            </div>
+            {member?.marketplace_slug && (
+              <Link
+                to={`/shop/${member.marketplace_slug}`}
+                className="btn btn-outline vendor-browse-all"
+              >
+                View full shop →
+              </Link>
+            )}
           </div>
-        </section>
-      )}
+
+          {(listing.more_from_seller?.length || 0) > 0 ? (
+            <div className="vendor-browse-grid">
+              {listing.more_from_seller!.map((item) => (
+                <ListingCard
+                  key={item.id}
+                  listing={{
+                    ...item,
+                    member_id: listing.member_id,
+                    first_name: member?.first_name,
+                    last_name: member?.last_name,
+                    marketplace_slug: member?.marketplace_slug,
+                    whatsapp: item.whatsapp || member?.whatsapp || listing.whatsapp,
+                    phone: item.phone || member?.phone || listing.phone,
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="vendor-browse-empty">
+              <p>This is currently their only active listing.</p>
+              {member?.marketplace_slug && (
+                <Link to={`/shop/${member.marketplace_slug}`} className="btn btn-primary">
+                  Visit {member.first_name}&apos;s shop
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
       <style>{`
         .listing-detail { min-height: 100vh; background: var(--bg-primary, #fff); padding-bottom: 64px; }
@@ -389,21 +452,72 @@ export default function ListingDetailPage() {
           color: var(--text-secondary, #6b6560);
           font-style: italic;
         }
-        .more-section h2 {
-          font-family: var(--font-display, 'Cormorant Garamond', serif);
-          font-size: 28px;
-          font-weight: 600;
-          margin-bottom: 20px;
+        .vendor-browse {
+          margin-top: 8px;
+          padding: 48px 0 24px;
+          background:
+            linear-gradient(180deg, #f7f4ef 0%, #ffffff 100%);
+          border-top: 1px solid var(--border, #e8e4dc);
         }
-        .more-grid {
+        .vendor-browse-head {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 20px;
+          margin-bottom: 28px;
+        }
+        .vendor-browse-kicker {
+          margin: 0 0 6px;
+          font-size: 12px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--text-muted, #9e9893);
+        }
+        .vendor-browse-head h2 {
+          font-family: var(--font-display, 'Cormorant Garamond', serif);
+          font-size: clamp(26px, 4vw, 34px);
+          font-weight: 600;
+          margin: 0 0 8px;
+          color: var(--text-primary, #1c1814);
+        }
+        .vendor-browse-sub {
+          margin: 0;
+          max-width: 42ch;
+          font-size: 15px;
+          line-height: 1.5;
+          color: var(--text-secondary, #6b6560);
+        }
+        .vendor-browse-all {
+          flex-shrink: 0;
+          white-space: nowrap;
+        }
+        .vendor-browse-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 16px;
+          gap: 18px;
+        }
+        .vendor-browse-empty {
+          padding: 28px;
+          border: 1px dashed var(--border, #e8e4dc);
+          border-radius: 14px;
+          background: rgba(255,255,255,0.7);
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+        }
+        .vendor-browse-empty p {
+          margin: 0;
+          color: var(--text-secondary, #6b6560);
         }
         @media (max-width: 900px) {
           .listing-layout { grid-template-columns: 1fr; gap: 20px; padding-top: 16px; }
           .listing-info h1 { font-size: 24px; }
           .listing-detail { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); overflow-x: hidden; }
+          .vendor-browse { padding: 32px 0 16px; }
+          .vendor-browse-head { flex-direction: column; align-items: flex-start; }
+          .vendor-browse-all { width: 100%; justify-content: center; }
         }
       `}</style>
     </div>

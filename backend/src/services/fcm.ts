@@ -18,6 +18,8 @@ export interface FcmPayload {
   title: string;
   body: string;
   link?: string | null;
+  /** Unread count for home-screen / dock badge */
+  badge?: number | null;
   data?: Record<string, string>;
 }
 
@@ -116,18 +118,25 @@ async function sendViaAdmin(
 ): Promise<{ ok: boolean; error?: string; invalid?: boolean }> {
   try {
     if (!app) ensureAdmin();
+    const badge =
+      payload.badge != null && Number.isFinite(Number(payload.badge))
+        ? Math.max(0, Math.floor(Number(payload.badge)))
+        : undefined;
+    const data: Record<string, string> = {
+      title: payload.title,
+      body: payload.body,
+      link: payload.link || '',
+      ...(badge != null ? { badge: String(badge) } : {}),
+      ...(payload.data || {}),
+    };
+
     await getMessaging(app || undefined).send({
       token,
       notification: {
         title: payload.title,
         body: payload.body,
       },
-      data: {
-        title: payload.title,
-        body: payload.body,
-        link: payload.link || '',
-        ...(payload.data || {}),
-      },
+      data,
       webpush: {
         fcmOptions: {
           link: payload.link || '/',
@@ -136,6 +145,12 @@ async function sendViaAdmin(
           title: payload.title,
           body: payload.body,
           icon: '/logo.png',
+          // Monochrome status-bar icon (Android); numeric badge goes via data + Badging API
+          badge: '/logo.png',
+          ...(badge != null ? { renotify: true, tag: 'christnerve' } : {}),
+        },
+        headers: {
+          Urgency: 'high',
         },
       },
     });
@@ -176,9 +191,13 @@ async function sendViaLegacyServerKey(
         notification: {
           title: payload.title,
           body: payload.body,
+          ...(payload.badge != null
+            ? { badge: Math.max(0, Math.floor(Number(payload.badge))) }
+            : {}),
         },
         data: {
           link: payload.link || '',
+          ...(payload.badge != null ? { badge: String(payload.badge) } : {}),
           ...(payload.data || {}),
         },
       }),

@@ -3,10 +3,38 @@ import { pool } from '../db';
 import { requireChurchAuth } from '../middleware/churchAuth';
 import { requireChurchTenant } from '../middleware/churchTenant';
 import { writeAudit } from '../services/audit';
+import { notifyChurchUsers } from './notifications';
 
 const router = Router();
 
 router.use(requireChurchTenant, requireChurchAuth);
+
+function staffFinanceOnly(req: Request, res: Response): boolean {
+  if (req.accountType === 'member') {
+    res.status(403).json({ error: 'Staff only' });
+    return false;
+  }
+  return true;
+}
+
+async function notifyFinanceSafe(opts: {
+  churchId: number;
+  title: string;
+  body: string;
+  link?: string;
+}) {
+  try {
+    await notifyChurchUsers({
+      churchId: opts.churchId,
+      userType: 'staff',
+      title: opts.title,
+      body: opts.body,
+      link: opts.link || '/finance',
+    });
+  } catch (err) {
+    console.warn('Finance notify failed:', err);
+  }
+}
 
 async function nextReceiptNumber(): Promise<string> {
   const now = new Date();
@@ -39,6 +67,7 @@ async function nextReceiptNumber(): Promise<string> {
  */
 router.get('/giving/summary', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
 
     const byType = await pool.query(
@@ -110,6 +139,7 @@ router.get('/giving/summary', async (req: Request, res: Response) => {
  */
 router.get('/giving', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
     const type = req.query.type as string | undefined;
     const from = req.query.from as string | undefined;
@@ -185,6 +215,7 @@ router.get('/giving', async (req: Request, res: Response) => {
  */
 router.post('/giving', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
     const userId = req.churchUser!.id;
     const {
@@ -256,6 +287,28 @@ router.post('/giving', async (req: Request, res: Response) => {
       summary: `Recorded ${giving_type} of GHS ${amt.toFixed(2)}`,
     });
 
+    await notifyFinanceSafe({
+      churchId,
+      title: 'Giving recorded',
+      body: `${giving_type}: GHS ${amt.toFixed(2)} · Receipt ${receipt_number}`,
+      link: '/finance/giving',
+    });
+
+    if (member_id) {
+      try {
+        await notifyChurchUsers({
+          churchId,
+          userType: 'member',
+          userId: Number(member_id),
+          title: 'Giving received — thank you',
+          body: `Your ${giving_type} of GHS ${amt.toFixed(2)} was recorded.`,
+          link: '/',
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
     res.status(201).json(row);
   } catch (err) {
     console.error('Create giving error:', err);
@@ -268,6 +321,7 @@ router.post('/giving', async (req: Request, res: Response) => {
  */
 router.get('/expenses', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
     const category = req.query.category as string | undefined;
     const from = req.query.from as string | undefined;
@@ -338,6 +392,7 @@ router.get('/expenses', async (req: Request, res: Response) => {
  */
 router.post('/expenses', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
     const userId = req.churchUser!.id;
     const {
@@ -394,6 +449,13 @@ router.post('/expenses', async (req: Request, res: Response) => {
       summary: `Recorded expense “${category}” of GHS ${amt.toFixed(2)}`,
     });
 
+    await notifyFinanceSafe({
+      churchId,
+      title: 'Expense recorded',
+      body: `${category}: GHS ${amt.toFixed(2)}`,
+      link: '/finance/expenses',
+    });
+
     res.status(201).json(row);
   } catch (err) {
     console.error('Create expense error:', err);
@@ -406,6 +468,7 @@ router.post('/expenses', async (req: Request, res: Response) => {
  */
 router.get('/report', async (req: Request, res: Response) => {
   try {
+    if (!staffFinanceOnly(req, res)) return;
     const churchId = req.churchTenant!.id;
     const now = new Date();
     const month = parseInt(String(req.query.month || now.getMonth() + 1), 10);

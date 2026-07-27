@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, BellOff, X } from 'lucide-react';
+import { Bell, BellOff, Share, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { enablePushNotifications, isFirebaseConfigured } from '../../lib/firebase';
 import { getChurchSlug } from '../../utils/tenantHost';
+import { isIosDevice, isPwaStandalone } from '../../utils/pwa';
 import { Button } from '../ui/Button';
 import './NotificationPrompt.css';
 
@@ -21,17 +22,18 @@ export const NotificationPrompt: React.FC<NotificationPromptProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const needsIosInstall = isIosDevice() && !isPwaStandalone();
 
   useEffect(() => {
     if (!isFirebaseConfigured()) return;
-    if (typeof Notification === 'undefined') return;
-    if (Notification.permission === 'granted') return;
-    if (Notification.permission === 'denied') return;
+    if (typeof Notification === 'undefined' && !needsIosInstall) return;
+    if (!needsIosInstall && Notification.permission === 'granted') return;
+    if (!needsIosInstall && Notification.permission === 'denied') return;
     if (sessionStorage.getItem(dismissKey(mode)) === '1') return;
 
     const t = window.setTimeout(() => setOpen(true), 700);
     return () => window.clearTimeout(t);
-  }, [mode]);
+  }, [mode, needsIosInstall]);
 
   if (!open) return null;
 
@@ -44,6 +46,10 @@ export const NotificationPrompt: React.FC<NotificationPromptProps> = ({
     setBusy(true);
     try {
       const result = await enablePushNotifications();
+      if (result.needsInstall) {
+        toast.error(result.error || 'Add to Home Screen first');
+        return;
+      }
       if (result.permission === 'denied' || result.permission === 'unsupported') {
         toast.error(result.error || 'Notifications blocked');
         dismiss();
@@ -59,14 +65,7 @@ export const NotificationPrompt: React.FC<NotificationPromptProps> = ({
         dismiss();
         return;
       }
-      if (result.permission === 'granted') {
-        toast.error(
-          result.error ||
-            'Permission granted, but push setup is incomplete. Add the Firebase VAPID key.'
-        );
-      } else {
-        toast.error(result.error || 'Could not enable notifications');
-      }
+      toast.error(result.error || 'Could not enable notifications');
     } catch {
       toast.error('Could not enable notifications');
     } finally {
@@ -83,16 +82,34 @@ export const NotificationPrompt: React.FC<NotificationPromptProps> = ({
         <Bell size={22} />
       </div>
       <div className="notif-prompt-body">
-        <strong>Stay in the loop</strong>
-        <p>Enable notifications for announcements, orders, and church updates.</p>
-        <div className="notif-prompt-actions">
-          <Button size="sm" loading={busy} onClick={() => void enable()}>
-            Enable notifications
-          </Button>
-          <Button size="sm" variant="ghost" onClick={dismiss}>
-            <BellOff size={14} /> Not now
-          </Button>
-        </div>
+        {needsIosInstall ? (
+          <>
+            <strong>Install for notifications</strong>
+            <p>
+              On iPhone, tap Share <Share size={12} style={{ display: 'inline' }} /> then
+              &nbsp;<strong>Add to Home Screen</strong>. Open the app icon and enable
+              notifications.
+            </p>
+            <div className="notif-prompt-actions">
+              <Button size="sm" variant="ghost" onClick={dismiss}>
+                Got it
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <strong>Stay in the loop</strong>
+            <p>Enable notifications for messages, new marketplace posts, and church updates.</p>
+            <div className="notif-prompt-actions">
+              <Button size="sm" loading={busy} onClick={() => void enable()}>
+                Enable notifications
+              </Button>
+              <Button size="sm" variant="ghost" onClick={dismiss}>
+                <BellOff size={14} /> Not now
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

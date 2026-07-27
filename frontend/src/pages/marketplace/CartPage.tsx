@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MessageCircle, Minus, Phone, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import api from '../../services/api';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatPriceRange } from '../../utils/formatGHS';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { WhatsAppButton } from '../../components/marketplace/WhatsAppButton';
+import { ListingCard } from '../../components/marketplace/ListingCard';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import type { MarketListing } from '../../types';
 
 const PLACEHOLDER =
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80';
+  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=200&q=80';
 
 function displayPhone(raw?: string | null): string | null {
   if (!raw) return null;
@@ -28,11 +31,15 @@ export default function CartPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { items, updateQty, removeItem, clear, lastAddedId } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, accountType } = useAuth();
+  const canChat = isAuthenticated && accountType === 'member';
   const focusFromNav = (location.state as { focusListingId?: number } | null)
     ?.focusListingId;
   const focusId = focusFromNav ?? lastAddedId;
   const focusedRef = useRef<HTMLElement | null>(null);
+  const [vendorMore, setVendorMore] = useState<MarketListing[]>([]);
+  const [vendorSlug, setVendorSlug] = useState<string | null>(null);
+  const [vendorName, setVendorName] = useState<string | null>(null);
 
   const orderedItems = useMemo(() => {
     if (!focusId) return items;
@@ -41,10 +48,53 @@ export default function CartPage() {
     return [...focused, ...rest];
   }, [items, focusId]);
 
+  const focusItem = useMemo(() => {
+    if (!focusId) return orderedItems[0] || null;
+    return (
+      orderedItems.find((i) => Number(i.listingId) === Number(focusId)) ||
+      orderedItems[0] ||
+      null
+    );
+  }, [orderedItems, focusId]);
+
   useEffect(() => {
     if (!focusId || !focusedRef.current) return;
     focusedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [focusId, orderedItems.length]);
+
+  useEffect(() => {
+    if (!focusItem?.slug) {
+      setVendorMore([]);
+      setVendorSlug(null);
+      setVendorName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(`/market/listings/${focusItem.slug}`);
+        if (cancelled) return;
+        const more = (res.data?.more_from_seller || []) as MarketListing[];
+        const member = res.data?.member;
+        setVendorMore(more);
+        setVendorSlug(member?.marketplace_slug || focusItem.sellerSlug || null);
+        setVendorName(
+          member
+            ? `${member.first_name} ${member.last_name}`.trim()
+            : focusItem.sellerName
+        );
+      } catch {
+        if (!cancelled) {
+          setVendorMore([]);
+          setVendorSlug(focusItem.sellerSlug || null);
+          setVendorName(focusItem.sellerName);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusItem?.slug, focusItem?.sellerName, focusItem?.sellerSlug]);
 
   const openChat = (item: (typeof items)[0]) => {
     if (!item.listingId) {
@@ -52,9 +102,13 @@ export default function CartPage() {
       return;
     }
     const chatPath = `/market/chat?listing=${item.listingId}`;
-    if (!isAuthenticated) {
-      toast.error('Sign in to chat with the vendor');
-      navigate('/login', { state: { from: chatPath } });
+    if (!canChat) {
+      toast.error(
+        'In-app chat is for church members. Use WhatsApp below to message the vendor.'
+      );
+      if (!isAuthenticated) {
+        navigate('/login', { state: { from: chatPath } });
+      }
       return;
     }
     navigate(chatPath);
@@ -82,7 +136,10 @@ export default function CartPage() {
                 <p className="cart-kicker">Checkout</p>
                 <h1 className="page-title">Your bag</h1>
                 <p className="page-sub">
-                  Contact each vendor with WhatsApp or in-app chat to complete your order.
+                  Contact each vendor on WhatsApp to complete your order.
+                  {canChat
+                    ? ' Members can also use in-app chat.'
+                    : ' Sign in as a member to use in-app chat.'}
                 </p>
               </div>
               <Button variant="ghost" size="sm" onClick={clear}>
@@ -105,6 +162,10 @@ export default function CartPage() {
                       src={resolveMediaUrl(item.image, PLACEHOLDER)}
                       alt={item.title}
                       className="cart-item-img"
+                      onError={(e) => {
+                        const el = e.currentTarget;
+                        if (el.src !== PLACEHOLDER) el.src = PLACEHOLDER;
+                      }}
                     />
                     <div className="cart-item-body">
                       {isFocused && (
@@ -116,7 +177,17 @@ export default function CartPage() {
                       >
                         {item.title}
                       </Link>
-                      <p className="cart-item-seller">by {item.sellerName}</p>
+                      <p className="cart-item-seller">
+                        by {item.sellerName}
+                        {item.sellerSlug && (
+                          <>
+                            {' · '}
+                            <Link to={`/shop/${item.sellerSlug}`}>
+                              Browse shop
+                            </Link>
+                          </>
+                        )}
+                      </p>
                       <p className="cart-item-price">
                         {formatPriceRange(
                           item.price_min,
@@ -162,7 +233,7 @@ export default function CartPage() {
                             </a>
                           ) : (
                             <span className="cart-vendor-missing">
-                              No phone on file — use in-app chat
+                              No WhatsApp on file
                             </span>
                           )}
                         </div>
@@ -176,9 +247,11 @@ export default function CartPage() {
                               label="WhatsApp vendor"
                             />
                           )}
-                          <Button size="sm" variant="outline" onClick={() => openChat(item)}>
-                            <MessageCircle size={14} /> In-app chat
-                          </Button>
+                          {canChat && (
+                            <Button size="sm" variant="outline" onClick={() => openChat(item)}>
+                              <MessageCircle size={14} /> In-app chat
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -186,6 +259,40 @@ export default function CartPage() {
                 );
               })}
             </div>
+
+            {(vendorMore.length > 0 || vendorSlug) && (
+              <section className="cart-vendor-browse">
+                <div className="cart-vendor-browse-head">
+                  <div>
+                    <p className="cart-vendor-browse-kicker">Keep shopping</p>
+                    <h2>
+                      More from {vendorName || 'this vendor'}
+                    </h2>
+                    <p>
+                      Browse other items from the same seller before you finish
+                      checkout.
+                    </p>
+                  </div>
+                  {vendorSlug && (
+                    <Link to={`/shop/${vendorSlug}`} className="btn btn-outline">
+                      View full shop →
+                    </Link>
+                  )}
+                </div>
+                {vendorMore.length > 0 ? (
+                  <div className="cart-vendor-browse-grid">
+                    {vendorMore.map((listing) => (
+                      <ListingCard key={listing.id} listing={listing} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="cart-vendor-browse-empty">
+                    No other active listings right now — check their full shop
+                    for updates.
+                  </p>
+                )}
+              </section>
+            )}
           </>
         )}
       </div>
@@ -201,6 +308,55 @@ export default function CartPage() {
           letter-spacing: 0.06em;
           color: var(--accent, #2d1b69);
           font-weight: 600;
+        }
+        .cart-vendor-browse {
+          margin-top: 40px;
+          padding: 28px 0 8px;
+          border-top: 1px solid var(--border, #e8e4dc);
+        }
+        .cart-vendor-browse-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 16px;
+          margin-bottom: 22px;
+        }
+        .cart-vendor-browse-kicker {
+          margin: 0 0 4px;
+          font-size: 11px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--text-muted, #9e9893);
+        }
+        .cart-vendor-browse-head h2 {
+          margin: 0 0 6px;
+          font-family: var(--font-display, 'Cormorant Garamond', serif);
+          font-size: 28px;
+          font-weight: 600;
+        }
+        .cart-vendor-browse-head p {
+          margin: 0;
+          max-width: 46ch;
+          color: var(--text-secondary, #6b6560);
+          font-size: 14px;
+        }
+        .cart-vendor-browse-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 16px;
+        }
+        .cart-vendor-browse-empty {
+          margin: 0;
+          padding: 18px;
+          border: 1px dashed var(--border, #e8e4dc);
+          border-radius: 12px;
+          color: var(--text-secondary, #6b6560);
+        }
+        @media (max-width: 700px) {
+          .cart-vendor-browse-head {
+            flex-direction: column;
+            align-items: flex-start;
+          }
         }
       `}</style>
     </div>

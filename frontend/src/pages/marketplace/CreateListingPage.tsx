@@ -61,7 +61,10 @@ export default function CreateListingPage() {
             ...f,
             category_id: cats[0]?.id ? String(cats[0].id) : '',
             member_id: user?.id ? String(user.id) : '',
-            whatsapp: (user as { phone?: string })?.phone || '',
+            whatsapp:
+              (user as { whatsapp?: string; phone?: string })?.whatsapp ||
+              (user as { phone?: string })?.phone ||
+              '',
             location: 'Kumasi',
           }));
         } else {

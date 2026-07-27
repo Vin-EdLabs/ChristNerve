@@ -4,6 +4,7 @@ import { requireChurchAuth } from '../middleware/churchAuth';
 import { requireChurchTenant } from '../middleware/churchTenant';
 import { upload } from '../middleware/upload';
 import { generateSlug } from '../utils/slug';
+import { notifyChurchBroadcast } from './notifications';
 
 const router = Router();
 
@@ -199,6 +200,9 @@ router.get('/listings/:slug', async (req: Request, res: Response) => {
       ),
       pool.query(
         `SELECT l.id, l.title, l.slug, l.price_min, l.price_max, l.price_label, l.location,
+                l.is_featured, l.member_id, l.whatsapp, l.phone,
+                c.name AS category_name, c.slug AS category_slug,
+                m.first_name, m.last_name, m.is_verified, m.marketplace_slug,
                 (
                   SELECT image_url FROM market_listing_images i
                   WHERE i.listing_id = l.id
@@ -206,9 +210,11 @@ router.get('/listings/:slug', async (req: Request, res: Response) => {
                   LIMIT 1
                 ) AS primary_image
          FROM market_listings l
+         LEFT JOIN market_categories c ON c.id = l.category_id
+         LEFT JOIN church_members m ON m.id = l.member_id
          WHERE l.member_id = $1 AND l.id <> $2 AND l.is_active = true
-         ORDER BY l.created_at DESC
-         LIMIT 6`,
+         ORDER BY l.is_featured DESC, l.created_at DESC
+         LIMIT 12`,
         [listing.member_id, listing.id]
       ),
     ]);
@@ -499,7 +505,27 @@ router.post(
         ]
       );
 
-      res.status(201).json(result.rows[0]);
+      const listing = result.rows[0];
+
+      try {
+        const seller = await pool.query(
+          `SELECT first_name, last_name FROM church_members WHERE id = $1`,
+          [listingMemberId]
+        );
+        const name = seller.rows[0]
+          ? `${seller.rows[0].first_name} ${seller.rows[0].last_name}`.trim()
+          : 'A member';
+        await notifyChurchBroadcast({
+          churchId,
+          title: 'New marketplace listing',
+          body: `${name} posted “${title}” — check it out in the market.`,
+          link: `/market/listing/${listing.slug || listing.id}`,
+        });
+      } catch (notifyErr) {
+        console.warn('Listing notify failed:', notifyErr);
+      }
+
+      res.status(201).json(listing);
     } catch (err) {
       console.error('Create listing error:', err);
       res.status(500).json({ error: 'Failed to create listing' });

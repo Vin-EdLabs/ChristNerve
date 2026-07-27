@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -55,7 +56,17 @@ function mapGivingSummary(raw: Record<string, unknown> | null): GivingSummaryTyp
 }
 
 export default function FinancePage() {
-  const [tab, setTab] = useState<Tab>('dashboard');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialTab: Tab =
+    tabParam === 'expenses' ||
+    tabParam === 'tithes' ||
+    tabParam === 'offerings' ||
+    tabParam === 'other' ||
+    tabParam === 'dashboard'
+      ? tabParam
+      : 'dashboard';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<GivingSummaryType | null>(null);
   const [giving, setGiving] = useState<ChurchGiving[]>([]);
@@ -105,6 +116,27 @@ export default function FinancePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (
+      tabParam === 'expenses' ||
+      tabParam === 'tithes' ||
+      tabParam === 'offerings' ||
+      tabParam === 'other' ||
+      tabParam === 'dashboard'
+    ) {
+      setTab(tabParam);
+    }
+  }, [tabParam]);
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    if (next === 'dashboard') {
+      setSearchParams({});
+    } else {
+      setSearchParams({ tab: next });
+    }
+  };
 
   const submitGiving = async (data: GivingFormValues) => {
     setSaving(true);
@@ -175,6 +207,11 @@ export default function FinancePage() {
   const expenseTotal = Number(
     report?.total_expenses ?? report?.expense_total ?? 0
   );
+  const netBalance = incomeTotal - expenseTotal;
+  const monthLabel = new Date().toLocaleDateString('en-GH', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   let incomeByType: { label: string; total: number }[] = [];
   const rawIncome = report?.income_by_type ?? report?.by_type;
@@ -209,14 +246,27 @@ export default function FinancePage() {
     <div className="finance-page">
       <div className="page-head finance-hero glass-card">
         <div>
-          <h1 className="page-title">Finance</h1>
+          <h1 className="page-title">Church Treasury · {monthLabel}</h1>
           <p className="page-sub">
-            Tithes, offerings, other income, and expenses â€” clear and separate.
+            Tithes, offerings, other income, and expenses — clear and separate.
           </p>
         </div>
-        <div className="finance-hero-net">
-          <span>Net this period</span>
-          <strong>{formatGHS(incomeTotal - expenseTotal)}</strong>
+        <div className="finance-treasury-stats">
+          <div>
+            <span>Total Income</span>
+            <strong className="mono">{formatGHS(incomeTotal)}</strong>
+          </div>
+          <div>
+            <span>Total Expenses</span>
+            <strong className="mono">{formatGHS(expenseTotal)}</strong>
+          </div>
+          <div>
+            <span>Net Balance</span>
+            <strong className="mono">
+              {formatGHS(netBalance)}
+              {netBalance >= 0 ? ' ✓' : ''}
+            </strong>
+          </div>
         </div>
       </div>
 
@@ -234,7 +284,7 @@ export default function FinancePage() {
             key={key}
             type="button"
             className={`page-tab${tab === key ? ' active' : ''}`}
-            onClick={() => setTab(key)}
+            onClick={() => selectTab(key)}
           >
             {label}
           </button>
@@ -452,6 +502,26 @@ export default function FinancePage() {
           gap: 16px;
           padding: 20px;
           flex-wrap: wrap;
+        }
+        .finance-treasury-stats {
+          display: flex;
+          gap: 24px;
+          flex-wrap: wrap;
+        }
+        .finance-treasury-stats > div {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 110px;
+        }
+        .finance-treasury-stats span {
+          font-size: 12px;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .finance-treasury-stats strong {
+          font-size: 20px;
         }
         .finance-hero-net {
           display: flex;

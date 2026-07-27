@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import {
   Calendar,
   CalendarCheck,
+  HandHeart,
+  HeartHandshake,
   LogOut,
   Megaphone,
   MoreVertical,
@@ -16,10 +18,12 @@ import {
   UserCog,
   Users,
   Wallet,
+  Church,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { NotificationBell } from '../notifications/NotificationBell';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 export interface TopBarProps {
   title: string;
@@ -39,21 +43,26 @@ const STAFF_MENU: NavLinkItem[] = [
   { to: '/events', label: 'Events', icon: Calendar },
   { to: '/announcements', label: 'News', icon: Megaphone },
   { to: '/departments', label: 'Departments', icon: Network },
+  { to: '/church-page', label: 'Church Page', icon: Church },
   { to: '/audit', label: 'Audit Log', icon: ScrollText },
   { to: '/market', label: 'Marketplace', icon: Store },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const MEMBER_MENU: NavLinkItem[] = [
-  { to: '/my-attendance', label: 'My Attendance', icon: CalendarCheck },
   { to: '/my-department', label: 'My Department', icon: Network },
+  { to: '/prayer-requests', label: 'Prayer', icon: HandHeart },
+  { to: '/welfare', label: 'Welfare', icon: HeartHandshake },
   { to: '/announcements', label: 'News', icon: Megaphone },
   { to: '/market', label: 'Marketplace', icon: Store },
+  { to: '/market/my-listings', label: 'My Shop', icon: Store },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const FINANCE_MENU: NavLinkItem[] = [
-  { to: '/finance', label: 'Finance', icon: Wallet },
+  { to: '/finance', label: 'Dashboard', icon: Wallet },
+  { to: '/finance/giving', label: 'Giving', icon: Wallet },
+  { to: '/finance/expenses', label: 'Expenses', icon: Wallet },
   { to: '/audit', label: 'Audit Log', icon: ScrollText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -69,6 +78,7 @@ export const TopBar: React.FC<TopBarProps> = ({ title }) => {
   const initials = user
     ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase()
     : '?';
+  const avatarSrc = resolveMediaUrl(user?.avatar_url);
   const firstName = user?.first_name || 'Friend';
   const role = String(user?.role || '').toLowerCase();
 
@@ -106,7 +116,11 @@ export const TopBar: React.FC<TopBarProps> = ({ title }) => {
               setMoreOpen(false);
             }}
           >
-            <div className="avatar avatar-sm">{initials}</div>
+            {avatarSrc ? (
+              <img src={avatarSrc} alt="" className="avatar avatar-sm" />
+            ) : (
+              <div className="avatar avatar-sm">{initials}</div>
+            )}
             <div className="topbar-user-text">
               <p className="topbar-greet">Greetings {firstName}</p>
               <span className="topbar-role-pill">

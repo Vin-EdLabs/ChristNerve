@@ -13,7 +13,7 @@ export interface ListingCardProps {
 }
 
 const PLACEHOLDER =
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=80';
+  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80';
 
 export const ListingCard: React.FC<ListingCardProps> = ({ listing, onClick }) => {
   const navigate = useNavigate();
@@ -54,7 +54,18 @@ export const ListingCard: React.FC<ListingCardProps> = ({ listing, onClick }) =>
       }}
     >
       <div className="listing-card-media">
-        <img src={image} alt={listing.title} loading="lazy" />
+        <img
+          src={image}
+          alt={listing.title}
+          loading="lazy"
+          onError={(e) => {
+            const el = e.currentTarget;
+            if (el.src !== PLACEHOLDER) el.src = PLACEHOLDER;
+          }}
+        />
+        {listing.is_featured && (
+          <span className="listing-card-featured">Featured</span>
+        )}
         {listing.is_verified && (
           <div className="listing-card-verified">
             <VerifiedBadge />

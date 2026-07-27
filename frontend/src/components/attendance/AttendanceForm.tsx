@@ -84,13 +84,14 @@ export const AttendanceForm: React.FC<AttendanceFormProps> = ({
       open={open}
       onClose={onClose}
       title="Record Service Attendance"
+      subtitle="Fill in the details below"
       footer={
         <>
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Cancel
-          </Button>
           <Button variant="primary" type="submit" form="attendance-form" loading={loading}>
             Save Attendance
+          </Button>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
           </Button>
         </>
       }

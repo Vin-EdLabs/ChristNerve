@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Download, X } from 'lucide-react';
+import { Download, Share, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { isIosDevice, isPwaStandalone } from '../../utils/pwa';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -13,20 +14,24 @@ export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [show, setShow] = useState(false);
+  const [iosHelp, setIosHelp] = useState(false);
 
   useEffect(() => {
-    const isInstalled =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      Boolean(
-        (window.navigator as Navigator & { standalone?: boolean }).standalone
-      );
-    if (isInstalled) return;
+    if (isPwaStandalone()) return;
     if (localStorage.getItem('pwa-prompt-dismissed') === 'true') return;
+
+    if (isIosDevice()) {
+      const t = window.setTimeout(() => {
+        setIosHelp(true);
+        setShow(true);
+      }, 12000);
+      return () => window.clearTimeout(t);
+    }
 
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      window.setTimeout(() => setShow(true), 20000);
+      window.setTimeout(() => setShow(true), 15000);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
@@ -59,12 +64,26 @@ export function InstallPrompt() {
       <img src={logoUrl} alt="" className="pwa-install-logo" />
       <div className="pwa-install-copy">
         <p className="pwa-install-title">Add to Home Screen</p>
-        <p className="pwa-install-sub">Install {churchName} for quick access</p>
+        <p className="pwa-install-sub">
+          {iosHelp
+            ? `Tap Share → Add to Home Screen so ${churchName} can send notifications.`
+            : `Install ${churchName} for quick access and notifications.`}
+        </p>
       </div>
-      <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleInstall()}>
-        <Download size={14} />
-        Install
-      </button>
+      {!iosHelp && deferredPrompt ? (
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={() => void handleInstall()}
+        >
+          <Download size={14} />
+          Install
+        </button>
+      ) : iosHelp ? (
+        <span className="pwa-install-ios-hint" aria-hidden>
+          <Share size={16} />
+        </span>
+      ) : null}
       <button
         type="button"
         className="pwa-install-close"

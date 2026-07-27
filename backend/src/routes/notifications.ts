@@ -1,11 +1,31 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { requireChurchAuth } from '../middleware/churchAuth';
-import { sendFcmToTokens } from '../services/fcm';
+import { sendFcmToToken, sendFcmToTokens } from '../services/fcm';
 
 const router = Router();
 
 router.use(requireChurchAuth);
+
+function unreadWhereClause(): string {
+  return `(
+    (user_type = $1 AND user_id = $2)
+    OR (church_id = $3 AND user_id IS NULL)
+  )`;
+}
+
+async function countUnreadForUser(
+  accountType: string,
+  userId: number,
+  churchId: number
+): Promise<number> {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS c FROM notifications
+     WHERE is_read = false AND ${unreadWhereClause()}`,
+    [accountType, userId, churchId]
+  );
+  return Number(result.rows[0]?.c) || 0;
+}
 
 /**
  * GET /api/notifications
@@ -25,10 +45,30 @@ router.get('/', async (req: Request, res: Response) => {
       [accountType, user.id, user.church_id]
     );
 
-    res.json({ data: result.rows });
+    const unread = result.rows.filter((r) => !r.is_read).length;
+    res.json({ data: result.rows, unread });
   } catch (err) {
     console.error('List notifications error:', err);
     res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+/**
+ * GET /api/notifications/unread-count
+ */
+router.get('/unread-count', async (req: Request, res: Response) => {
+  try {
+    const user = req.churchUser!;
+    const accountType = req.accountType || 'staff';
+    const count = await countUnreadForUser(
+      accountType,
+      user.id,
+      user.church_id
+    );
+    res.json({ count });
+  } catch (err) {
+    console.error('Unread notifications count error:', err);
+    res.status(500).json({ error: 'Failed to fetch unread count' });
   }
 });
 
@@ -62,7 +102,12 @@ router.post('/read/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json(result.rows[0]);
+    const unread = await countUnreadForUser(
+      accountType,
+      user.id,
+      user.church_id
+    );
+    res.json({ ...result.rows[0], unread });
   } catch (err) {
     console.error('Mark notification read error:', err);
     res.status(500).json({ error: 'Failed to mark notification as read' });
@@ -87,7 +132,7 @@ router.post('/read-all', async (req: Request, res: Response) => {
       [accountType, user.id, user.church_id]
     );
 
-    res.json({ ok: true });
+    res.json({ ok: true, unread: 0 });
   } catch (err) {
     console.error('Mark all notifications read error:', err);
     res.status(500).json({ error: 'Failed to mark all as read' });
@@ -152,26 +197,48 @@ export async function notifyChurchUsers(opts: {
     ]
   );
 
-  let tokens;
   if (opts.userId != null) {
-    tokens = await pool.query(
+    const tokens = await pool.query(
       `SELECT token FROM device_tokens
        WHERE church_id = $1 AND user_type = $2 AND user_id = $3`,
       [opts.churchId, userType, opts.userId]
     );
+    const badge = await countUnreadForUser(
+      userType,
+      opts.userId,
+      opts.churchId
+    );
+    if (tokens.rows.length > 0) {
+      await sendFcmToTokens(
+        tokens.rows.map((r) => r.token as string),
+        {
+          title: opts.title,
+          body: opts.body,
+          link: opts.link,
+          badge,
+        }
+      );
+    }
   } else {
-    // Church-wide for this audience: all devices of that user_type in the tenant
-    tokens = await pool.query(
-      `SELECT token FROM device_tokens
+    // Per-device personalized badge for this audience
+    const tokens = await pool.query(
+      `SELECT token, user_id FROM device_tokens
        WHERE church_id = $1 AND user_type = $2`,
       [opts.churchId, userType]
     );
-  }
-
-  if (tokens.rows.length > 0) {
-    await sendFcmToTokens(
-      tokens.rows.map((r) => r.token as string),
-      { title: opts.title, body: opts.body, link: opts.link }
+    await Promise.all(
+      tokens.rows.map(async (row) => {
+        const uid = Number(row.user_id);
+        const badge = Number.isFinite(uid)
+          ? await countUnreadForUser(userType, uid, opts.churchId)
+          : 1;
+        await sendFcmToToken(String(row.token), {
+          title: opts.title,
+          body: opts.body,
+          link: opts.link,
+          badge,
+        });
+      })
     );
   }
 
@@ -196,16 +263,26 @@ export async function notifyChurchBroadcast(opts: {
   );
 
   const tokens = await pool.query(
-    `SELECT token FROM device_tokens WHERE church_id = $1`,
+    `SELECT token, user_id, user_type FROM device_tokens WHERE church_id = $1`,
     [opts.churchId]
   );
 
-  if (tokens.rows.length > 0) {
-    await sendFcmToTokens(
-      tokens.rows.map((r) => r.token as string),
-      { title: opts.title, body: opts.body, link: opts.link }
-    );
-  }
+  await Promise.all(
+    tokens.rows.map(async (row) => {
+      const uid = Number(row.user_id);
+      const utype = String(row.user_type || 'staff');
+      let badge = 1;
+      if (Number.isFinite(uid) && uid > 0) {
+        badge = await countUnreadForUser(utype, uid, opts.churchId);
+      }
+      await sendFcmToToken(String(row.token), {
+        title: opts.title,
+        body: opts.body,
+        link: opts.link,
+        badge,
+      });
+    })
+  );
 
   return result.rows[0].id as number;
 }

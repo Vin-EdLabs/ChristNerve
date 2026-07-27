@@ -72,6 +72,7 @@ export interface ChurchUser {
   created_at?: string;
   marketplace_slug?: string | null;
   department?: string | null;
+  whatsapp?: string | null;
   ministry?: string | null;
   cell_group?: string | null;
   membership_date?: string | null;
@@ -96,6 +97,7 @@ export interface ChurchMember {
   city?: string | null;
   avatar_url?: string | null;
   department?: string | null;
+  department_ids?: number[];
   ministry?: string | null;
   cell_group?: string | null;
   membership_status: MembershipStatus | string;
@@ -232,6 +234,8 @@ export interface ChurchAnnouncement {
   publish_date?: string | null;
   created_by?: number | null;
   created_by_name?: string | null;
+  created_by_first_name?: string | null;
+  created_by_last_name?: string | null;
   created_at?: string;
 }
 

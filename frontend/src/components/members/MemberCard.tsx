@@ -3,22 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import type { ChurchMember } from '../../types';
 import { Badge, statusToBadgeVariant } from '../ui/Badge';
 import { VerifiedBadge } from './VerifiedBadge';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 export interface MemberCardProps {
   member: ChurchMember;
   onClick?: () => void;
 }
 
-const uploadsBase = import.meta.env.VITE_UPLOADS_URL || '';
-
 export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick }) => {
   const navigate = useNavigate();
   const initials = `${member.first_name?.[0] || ''}${member.last_name?.[0] || ''}`.toUpperCase();
-  const avatarSrc = member.avatar_url
-    ? member.avatar_url.startsWith('http')
-      ? member.avatar_url
-      : `${uploadsBase}${member.avatar_url}`
-    : undefined;
+  const avatarSrc = resolveMediaUrl(member.avatar_url);
 
   const handleClick = () => {
     if (onClick) onClick();

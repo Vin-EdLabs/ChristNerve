@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Phone, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { formatGHS } from '../../utils/formatGHS';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import type { ChurchMember, ChurchGiving, MarketListing } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge, statusToBadgeVariant } from '../../components/ui/Badge';
@@ -14,7 +15,45 @@ import { MemberForm } from '../../components/members/MemberForm';
 import type { MemberFormValues } from '../../components/members/MemberForm';
 import { ListingCard } from '../../components/marketplace/ListingCard';
 
-type TabKey = 'profile' | 'giving' | 'attendance' | 'marketplace';
+type TabKey =
+  | 'profile'
+  | 'attendance'
+  | 'giving'
+  | 'prayer'
+  | 'cell'
+  | 'marketplace';
+
+type AttendanceRow = {
+  id: number;
+  service_type?: string;
+  service_date?: string;
+  present?: boolean;
+};
+
+type PrayerRow = {
+  id: number;
+  request: string;
+  status: string;
+  is_anonymous?: boolean;
+  created_at?: string;
+};
+
+type CellGroupRow = {
+  id: number;
+  name: string;
+  meeting_day?: string;
+  meeting_time?: string;
+  location?: string;
+};
+
+function asList<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object') {
+    const d = (payload as { data?: unknown }).data;
+    if (Array.isArray(d)) return d as T[];
+  }
+  return [];
+}
 
 export default function MemberDetail() {
   const { id } = useParams<{ id: string }>();
@@ -23,9 +62,15 @@ export default function MemberDetail() {
   const [member, setMember] = useState<ChurchMember | null>(null);
   const [tab, setTab] = useState<TabKey>('profile');
   const [giving, setGiving] = useState<ChurchGiving[]>([]);
-  const [attendance, setAttendance] = useState<
-    { id: number; service_type?: string; service_date?: string; checked_in_at?: string }[]
-  >([]);
+  const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
+  const [attStats, setAttStats] = useState({
+    percentage: 0,
+    streak: 0,
+    present: 0,
+    total: 0,
+  });
+  const [prayers, setPrayers] = useState<PrayerRow[]>([]);
+  const [cellGroups, setCellGroups] = useState<CellGroupRow[]>([]);
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,11 +107,22 @@ export default function MemberDetail() {
           const rows = res.data?.data ?? res.data?.giving ?? res.data ?? [];
           if (!cancelled) setGiving(Array.isArray(rows) ? rows : []);
         } else if (tab === 'attendance') {
-          const res = await api.get(`/attendance`);
-          const rows = res.data?.data ?? res.data ?? [];
+          const res = await api.get(`/attendance/member/${id}`);
           if (!cancelled) {
-            setAttendance(Array.isArray(rows) ? rows.slice(0, 20) : []);
+            setAttendance(asList<AttendanceRow>(res.data));
+            setAttStats({
+              percentage: Number(res.data?.stats?.percentage || 0),
+              streak: Number(res.data?.stats?.streak || 0),
+              present: Number(res.data?.stats?.present || 0),
+              total: Number(res.data?.stats?.total || 0),
+            });
           }
+        } else if (tab === 'prayer') {
+          const res = await api.get(`/pastoral/members/${id}/prayer-requests`);
+          if (!cancelled) setPrayers(asList<PrayerRow>(res.data));
+        } else if (tab === 'cell') {
+          const res = await api.get(`/pastoral/members/${id}/cell-groups`);
+          if (!cancelled) setCellGroups(asList<CellGroupRow>(res.data));
         } else if (tab === 'marketplace') {
           const slug = member.marketplace_slug;
           if (slug) {
@@ -114,11 +170,17 @@ export default function MemberDetail() {
     }
   };
 
-  const handleSave = async (data: MemberFormValues) => {
+  const handleSave = async (data: MemberFormValues, avatarFile?: File | null) => {
     if (!member) return;
     setSaving(true);
     try {
-      await api.put(`/members/${member.id}`, data);
+      const { avatar_url: _a, ...rest } = data;
+      await api.put(`/members/${member.id}`, rest);
+      if (avatarFile) {
+        const fd = new FormData();
+        fd.append('avatar', avatarFile);
+        await api.post(`/members/${member.id}/avatar`, fd);
+      }
       toast.success('Member updated successfully');
       setEditOpen(false);
       await loadMember();
@@ -131,6 +193,36 @@ export default function MemberDetail() {
       setSaving(false);
     }
   };
+
+  const yearGiving = useMemo(() => {
+    const year = new Date().getFullYear();
+    return giving.filter((g) => {
+      if (!g.service_date) return false;
+      return new Date(g.service_date).getFullYear() === year;
+    });
+  }, [giving]);
+
+  const givingTotal = yearGiving.reduce((sum, g) => sum + Number(g.amount || 0), 0);
+
+  const givingByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of yearGiving) {
+      if (!g.service_date) continue;
+      const d = new Date(g.service_date);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      map.set(key, (map.get(key) || 0) + Number(g.amount || 0));
+    }
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [yearGiving]);
+
+  const givingByType = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of yearGiving) {
+      const t = g.giving_type || 'Other';
+      map.set(t, (map.get(t) || 0) + Number(g.amount || 0));
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [yearGiving]);
 
   if (loading) {
     return (
@@ -150,7 +242,6 @@ export default function MemberDetail() {
         year: 'numeric',
       })
     : null;
-  const givingTotal = giving.reduce((sum, g) => sum + Number(g.amount || 0), 0);
 
   const profileFields: [string, string | undefined | null][] = [
     ['Member Number', member.member_number],
@@ -180,12 +271,25 @@ export default function MemberDetail() {
     ],
   ];
 
+  const tabs: [TabKey, string][] = [
+    ['profile', 'Profile'],
+    ['attendance', 'Attendance'],
+    ['giving', 'Giving'],
+    ['prayer', 'Prayer'],
+    ['cell', 'Cell Group'],
+    ['marketplace', 'Marketplace'],
+  ];
+
   return (
     <div className="member-detail">
       <header className="card member-header">
         <div className="member-header-main">
           {member.avatar_url ? (
-            <img src={member.avatar_url} alt={fullName} className="member-avatar" />
+            <img
+              src={resolveMediaUrl(member.avatar_url)}
+              alt={fullName}
+              className="member-avatar"
+            />
           ) : (
             <div className="member-avatar member-avatar--fallback">
               {member.first_name?.[0]}
@@ -233,14 +337,7 @@ export default function MemberDetail() {
       </header>
 
       <div className="tabs">
-        {(
-          [
-            ['profile', 'Profile'],
-            ['giving', 'Giving'],
-            ['attendance', 'Attendance'],
-            ['marketplace', 'Marketplace'],
-          ] as const
-        ).map(([key, label]) => (
+        {tabs.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -264,58 +361,139 @@ export default function MemberDetail() {
               </div>
             ))}
           </dl>
-        ) : tab === 'giving' ? (
-          giving.length === 0 ? (
-            <EmptyState title="No giving records for this member." />
-          ) : (
-            <>
-              <p className="giving-total">
-                Total: <strong className="mono">{formatGHS(givingTotal)}</strong>
-              </p>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Type</th>
-                      <th>Amount</th>
-                      <th>Method</th>
-                      <th>Date</th>
-                      <th>Receipt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {giving.map((g) => (
-                      <tr key={g.id}>
-                        <td>{g.giving_type}</td>
-                        <td className="mono">{formatGHS(Number(g.amount))}</td>
-                        <td>{g.payment_method || '—'}</td>
-                        <td>
-                          {g.service_date
-                            ? new Date(g.service_date).toLocaleDateString('en-GH')
-                            : '—'}
-                        </td>
-                        <td>{g.receipt_number || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )
         ) : tab === 'attendance' ? (
           attendance.length === 0 ? (
             <EmptyState title="No attendance history yet." />
           ) : (
-            <ul className="att-list">
-              {attendance.map((a) => (
-                <li key={a.id}>
-                  <strong>{a.service_type || 'Service'}</strong>
-                  <span>
-                    {a.service_date
-                      ? new Date(a.service_date).toLocaleDateString('en-GH')
-                      : a.checked_in_at
-                        ? new Date(a.checked_in_at).toLocaleDateString('en-GH')
+            <div className="att-panel">
+              <div className="att-summary">
+                <div>
+                  <span className="att-label">Attendance</span>
+                  <strong>{attStats.percentage}%</strong>
+                  <small>
+                    {attStats.present} of last {attStats.total} services
+                  </small>
+                </div>
+                {attStats.streak > 0 && (
+                  <p className="att-streak">
+                    Present {attStats.streak}{' '}
+                    {attStats.streak === 1 ? 'service' : 'services'} in a row
+                  </p>
+                )}
+              </div>
+              <div className="att-dots" aria-label="Last 8 services">
+                {attendance.map((a) => (
+                  <div key={a.id} className="att-dot-wrap" title={a.service_type || 'Service'}>
+                    <span
+                      className={`att-dot${a.present ? ' att-dot--present' : ' att-dot--absent'}`}
+                    />
+                    <small>
+                      {a.service_date
+                        ? new Date(a.service_date).toLocaleDateString('en-GH', {
+                            day: 'numeric',
+                            month: 'short',
+                          })
                         : '—'}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        ) : tab === 'giving' ? (
+          yearGiving.length === 0 ? (
+            <EmptyState title="No giving records for this member." />
+          ) : (
+            <>
+              <p className="giving-total">
+                Total this year:{' '}
+                <strong className="mono">{formatGHS(givingTotal)}</strong>
+              </p>
+              {givingByType.length > 0 && (
+                <div className="giving-bars">
+                  {givingByType.map(([type, amount]) => {
+                    const pct = givingTotal
+                      ? Math.round((amount / givingTotal) * 100)
+                      : 0;
+                    return (
+                      <div key={type} className="giving-bar-row">
+                        <div className="giving-bar-meta">
+                          <span>{type}</span>
+                          <strong className="mono">{formatGHS(amount)}</strong>
+                        </div>
+                        <div className="giving-bar-track">
+                          <div
+                            className="giving-bar-fill"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {givingByMonth.length > 0 && (
+                <div className="table-wrap" style={{ marginTop: 16 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Month</th>
+                        <th>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {givingByMonth.map(([month, amount]) => (
+                        <tr key={month}>
+                          <td>{month}</td>
+                          <td className="mono">{formatGHS(amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )
+        ) : tab === 'prayer' ? (
+          prayers.length === 0 ? (
+            <EmptyState title="No prayer requests for this member." />
+          ) : (
+            <ul className="prayer-list">
+              {prayers.map((p) => (
+                <li key={p.id}>
+                  <div className="prayer-list-top">
+                    <Badge variant={statusToBadgeVariant(p.status)}>
+                      {p.status}
+                    </Badge>
+                    <span>
+                      {p.created_at
+                        ? new Date(p.created_at).toLocaleDateString('en-GH')
+                        : '—'}
+                    </span>
+                  </div>
+                  <p>{p.request}</p>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : tab === 'cell' ? (
+          cellGroups.length === 0 && !member.cell_group ? (
+            <EmptyState title="Not linked to a cell group yet." />
+          ) : (
+            <ul className="cell-list">
+              {cellGroups.length === 0 && member.cell_group && (
+                <li>
+                  <strong>{member.cell_group}</strong>
+                  <span>From member profile</span>
+                </li>
+              )}
+              {cellGroups.map((g) => (
+                <li key={g.id}>
+                  <strong>{g.name}</strong>
+                  <span>
+                    {[g.meeting_day, g.meeting_time, g.location]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
                   </span>
                 </li>
               ))}
@@ -352,8 +530,10 @@ export default function MemberDetail() {
         .member-avatar {
           width: 96px;
           height: 96px;
-          border-radius: 20px;
+          border-radius: 50%;
           object-fit: cover;
+          box-shadow: 0 0 0 3px rgba(45, 27, 105, 0.12);
+          flex-shrink: 0;
         }
         .member-avatar--fallback {
           display: grid;
@@ -437,9 +617,98 @@ export default function MemberDetail() {
           text-transform: uppercase;
           color: var(--text-muted, #9e9893);
         }
-        .att-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
-        .att-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
-        .att-list span { color: var(--text-secondary, #6b6560); }
+        .att-summary {
+          display: flex;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          margin-bottom: 18px;
+        }
+        .att-label {
+          display: block;
+          font-size: 12px;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .att-summary strong {
+          display: block;
+          font-size: 28px;
+          font-family: var(--font-mono);
+          margin-top: 4px;
+        }
+        .att-summary small { color: var(--text-secondary); font-size: 13px; }
+        .att-streak {
+          align-self: flex-end;
+          font-size: 14px;
+          color: var(--accent);
+          font-weight: 500;
+          margin: 0;
+        }
+        .att-dots {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .att-dot-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          min-width: 44px;
+        }
+        .att-dot {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: var(--border);
+        }
+        .att-dot--present { background: var(--accent); }
+        .att-dot--absent { background: var(--border); opacity: 0.7; }
+        .att-dot-wrap small {
+          font-size: 11px;
+          color: var(--text-muted);
+        }
+        .giving-bars { display: flex; flex-direction: column; gap: 10px; }
+        .giving-bar-meta {
+          display: flex;
+          justify-content: space-between;
+          font-size: 13px;
+          margin-bottom: 4px;
+        }
+        .giving-bar-track {
+          height: 8px;
+          border-radius: 999px;
+          background: var(--accent-light, #ede8fa);
+          overflow: hidden;
+        }
+        .giving-bar-fill {
+          height: 100%;
+          background: var(--accent);
+          border-radius: 999px;
+        }
+        .prayer-list, .cell-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .prayer-list li, .cell-list li {
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--border);
+        }
+        .prayer-list-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 6px;
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+        .cell-list strong { display: block; font-size: 15px; }
+        .cell-list span { font-size: 13px; color: var(--text-secondary); }
         .listings-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

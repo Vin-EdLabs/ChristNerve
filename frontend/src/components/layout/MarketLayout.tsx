@@ -32,11 +32,11 @@ export const MarketTabBar: React.FC = () => {
     { to: '/market', label: 'Browse', icon: Store, end: true },
     { to: '/market/cart', label: 'Cart', icon: ShoppingCart },
     { to: '/market/chat', label: 'Chat', icon: MessageCircle },
-    { to: '/', label: 'Church', icon: Home, end: true },
+    { to: '/', label: 'Home', icon: Home, end: true },
   ];
 
   const isTabActive = (to: string) => {
-    if (to === '/') return false;
+    if (to === '/') return false; // portal home is outside market shell
     if (to === '/market') {
       return (
         pathname === '/market' ||

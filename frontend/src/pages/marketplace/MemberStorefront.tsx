@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { MapPin } from 'lucide-react';
+import { MapPin, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import type { MarketListing } from '../../types';
@@ -35,6 +35,9 @@ interface StorefrontData {
   };
   listings: MarketListing[];
 }
+
+const HERO =
+  'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1600&q=80';
 
 export default function MemberStorefront() {
   const { memberSlug } = useParams<{ memberSlug: string }>();
@@ -105,68 +108,78 @@ export default function MemberStorefront() {
 
   const { member, church, listings } = data;
   const fullName = `${member.first_name} ${member.last_name}`.trim();
+  const count = listings?.length || 0;
+  const year = member.membership_date
+    ? new Date(member.membership_date).getFullYear()
+    : null;
 
   return (
-    <div className="storefront">
-      <div className="storefront-banner">
-        <div className="container storefront-banner-inner">
-          <div className="storefront-banner-left">
-            {church.logo_url ? (
-              <img src={resolveMediaUrl(church.logo_url)} alt={church.name} />
+    <div className="storefront storefront--shop">
+      <section className="storefront-hero">
+        <div
+          className="storefront-hero-media"
+          aria-hidden
+          style={{ backgroundImage: `url('${HERO}')` }}
+        />
+        <div className="storefront-hero-veil" aria-hidden />
+        <div className="container storefront-hero-inner">
+          <p className="storefront-hero-kicker">{church.name} marketplace</p>
+          <div className="storefront-hero-profile">
+            {member.avatar_url ? (
+              <img
+                src={resolveMediaUrl(member.avatar_url)}
+                alt={fullName}
+                className="storefront-hero-avatar"
+              />
             ) : (
-              <div className="storefront-logo-fallback">{church.name?.[0]}</div>
+              <div className="storefront-hero-avatar storefront-hero-avatar--fallback">
+                {member.first_name?.[0]}
+                {member.last_name?.[0]}
+              </div>
             )}
-            <p>
-              <strong>{fullName}</strong> is a verified member of {church.name}
-              {church.city ? `, ${church.city}` : ''}
-            </p>
-          </div>
-          <Link to="/market" className="btn btn-outline storefront-visit">
-            Visit →
-          </Link>
-        </div>
-      </div>
-
-      <div className="container storefront-body">
-        <section className="card storefront-member">
-          {member.avatar_url ? (
-            <img src={member.avatar_url} alt={fullName} className="storefront-avatar" />
-          ) : (
-            <div className="storefront-avatar storefront-avatar--fallback">
-              {member.first_name?.[0]}
-              {member.last_name?.[0]}
+            <div>
+              <h1>{fullName}</h1>
+              {member.occupation && (
+                <p className="storefront-hero-role">{member.occupation}</p>
+              )}
+              <div className="storefront-hero-meta">
+                {member.is_verified && <VerifiedBadge />}
+                {member.city && (
+                  <span>
+                    <MapPin size={14} /> {member.city}
+                  </span>
+                )}
+                {year && <span>Member since {year}</span>}
+                <span>
+                  <Package size={14} /> {count} listing{count === 1 ? '' : 's'}
+                </span>
+              </div>
             </div>
-          )}
-          <h1>{fullName}</h1>
-          {member.occupation && (
-            <p className="storefront-occupation">{member.occupation}</p>
-          )}
-          <div className="storefront-badges">
-            {member.is_verified && <VerifiedBadge />}
-            {member.city && (
-              <span className="storefront-city">
-                <MapPin size={14} />
-                {member.city}
-              </span>
-            )}
           </div>
-          <div className="storefront-actions">
+          <div className="storefront-hero-actions">
             <Link to="/market/cart" className="btn btn-primary">
               View cart / checkout
             </Link>
-            <Link to="/market" className="btn btn-outline">
-              Browse marketplace
+            <Link to="/market" className="btn btn-outline storefront-hero-ghost">
+              Back to marketplace
             </Link>
           </div>
-          <p className="listing-privacy-note" style={{ marginTop: 12 }}>
-            Seller contact unlocks at checkout after you add items to your cart.
-          </p>
-        </section>
+        </div>
+      </section>
 
+      <div className="container storefront-body">
         <section>
-          <h2 className="storefront-section-title">
-            What {member.first_name} Offers
-          </h2>
+          <div className="storefront-section-head">
+            <div>
+              <p className="storefront-section-kicker">Vendor shop</p>
+              <h2 className="storefront-section-title">
+                What {member.first_name} offers
+              </h2>
+              <p className="storefront-section-sub">
+                Browse every active item from this church member in one place.
+              </p>
+            </div>
+          </div>
           {listings?.length ? (
             <ListingGrid listings={listings} />
           ) : (
@@ -181,110 +194,129 @@ export default function MemberStorefront() {
             {[church.city, church.denomination].filter(Boolean).join(' · ')}
           </p>
           {church.tagline && <p className="storefront-tagline">{church.tagline}</p>}
-          <Link to="/" className="btn btn-primary">
-            Join Our Community
+          <Link to="/visit" className="btn btn-primary">
+            Visit church page
           </Link>
         </section>
       </div>
 
       <style>{`
-        .storefront {
+        .storefront--shop {
           min-height: 100vh;
           background: var(--bg-primary, #fff);
           padding-bottom: 64px;
         }
-        .storefront-banner {
-          background: var(--bg-secondary, #f8f7f5);
-          border-bottom: 1px solid var(--border, #e8e4dc);
-          padding: 16px 0;
+        .storefront-hero {
+          position: relative;
+          overflow: hidden;
+          color: #f7f3ea;
+          padding: 48px 0 56px;
         }
-        .storefront-banner-inner {
+        .storefront-hero-media {
+          position: absolute;
+          inset: 0;
+          background-size: cover;
+          background-position: center;
+          transform: scale(1.04);
+          filter: saturate(0.85) contrast(1.05);
+        }
+        .storefront-hero-veil {
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(180deg, rgba(16,13,10,0.62) 0%, rgba(16,13,10,0.78) 100%);
+        }
+        .storefront-hero-inner {
+          position: relative;
+          z-index: 1;
+        }
+        .storefront-hero-kicker {
+          margin: 0 0 18px;
+          font-size: 12px;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          opacity: 0.8;
+        }
+        .storefront-hero-profile {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          gap: 16px;
+          gap: 18px;
+          margin-bottom: 24px;
         }
-        .storefront-banner-left {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          font-size: 14px;
-        }
-        .storefront-banner-left img,
-        .storefront-logo-fallback {
-          width: 40px;
-          height: 40px;
-          border-radius: 10px;
+        .storefront-hero-avatar {
+          width: 88px;
+          height: 88px;
+          border-radius: 50%;
           object-fit: cover;
+          border: 3px solid rgba(255,255,255,0.35);
           flex-shrink: 0;
         }
-        .storefront-logo-fallback {
+        .storefront-hero-avatar--fallback {
           display: grid;
           place-items: center;
-          background: var(--accent-light, #ede8fa);
-          color: var(--accent, #2d1b69);
+          background: rgba(243, 230, 200, 0.2);
+          font-family: var(--font-display, 'Cormorant Garamond', serif);
+          font-size: 28px;
           font-weight: 600;
         }
-        .storefront-visit { white-space: nowrap; }
+        .storefront-hero-inner h1 {
+          margin: 0;
+          font-family: var(--font-display, 'Cormorant Garamond', serif);
+          font-size: clamp(32px, 5vw, 44px);
+          font-weight: 600;
+          color: #fff !important;
+        }
+        .storefront-hero-role {
+          margin: 6px 0 10px;
+          font-size: 15px;
+          opacity: 0.88;
+        }
+        .storefront-hero-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 14px;
+          align-items: center;
+          font-size: 13px;
+          opacity: 0.9;
+        }
+        .storefront-hero-meta span {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .storefront-hero-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+        .storefront-hero-ghost {
+          background: transparent;
+          color: #f7f3ea;
+          border-color: rgba(247, 243, 234, 0.45);
+        }
         .storefront-body {
-          padding-top: 32px;
+          padding-top: 36px;
           display: flex;
           flex-direction: column;
           gap: 40px;
         }
-        .storefront-member { text-align: center; padding: 36px 24px; }
-        .storefront-avatar {
-          width: 80px;
-          height: 80px;
-          border-radius: 50%;
-          object-fit: cover;
-          margin: 0 auto 16px;
-        }
-        .storefront-avatar--fallback {
-          display: grid;
-          place-items: center;
-          background: var(--accent-light, #ede8fa);
-          color: var(--accent, #2d1b69);
-          font-family: var(--font-display, 'Cormorant Garamond', serif);
-          font-size: 28px;
-          font-weight: 600;
-        }
-        .storefront-member h1 {
-          font-family: var(--font-display, 'Cormorant Garamond', serif);
-          font-size: 32px;
-          font-weight: 600;
-        }
-        .storefront-occupation {
-          font-size: 15px;
-          color: var(--text-secondary, #6b6560);
-          margin-top: 6px;
-        }
-        .storefront-badges {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          gap: 12px;
-          margin: 14px 0 20px;
-          flex-wrap: wrap;
-        }
-        .storefront-city {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 13px;
+        .storefront-section-kicker {
+          margin: 0 0 4px;
+          font-size: 11px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
           color: var(--text-muted, #9e9893);
-        }
-        .storefront-actions {
-          display: flex;
-          justify-content: center;
-          gap: 10px;
-          flex-wrap: wrap;
         }
         .storefront-section-title {
           font-family: var(--font-display, 'Cormorant Garamond', serif);
-          font-size: 28px;
+          font-size: 30px;
           font-weight: 600;
-          margin-bottom: 20px;
+          margin: 0 0 8px;
+        }
+        .storefront-section-sub {
+          margin: 0 0 22px;
+          color: var(--text-secondary, #6b6560);
+          max-width: 48ch;
         }
         .storefront-church { text-align: center; }
         .storefront-church-label {
@@ -311,10 +343,9 @@ export default function MemberStorefront() {
           margin-bottom: 20px;
         }
         @media (max-width: 640px) {
-          .storefront-banner-inner { flex-direction: column; align-items: flex-start; }
-          .storefront-actions { flex-direction: column; }
-          .storefront-actions .btn,
-          .storefront-actions a { width: 100%; justify-content: center; }
+          .storefront-hero { padding: 36px 0 40px; }
+          .storefront-hero-profile { align-items: flex-start; }
+          .storefront-hero-actions .btn { width: 100%; justify-content: center; }
         }
       `}</style>
     </div>

@@ -83,7 +83,7 @@ export default function MarketplacePage() {
             category: category || undefined,
             search: query || undefined,
             page: pageNum,
-            limit: 12,
+            limit: 24,
           },
         });
         const rows = asList<MarketListing>(res.data);
@@ -125,7 +125,8 @@ export default function MarketplacePage() {
           <span className="market-hero-rule" aria-hidden />
           <h1 className="market-hero-title">Marketplace</h1>
           <p className="market-hero-sub">
-            Classic goods and trusted services from members of the congregation.
+            Shirts, books, fresh food, drinks, and more — shop goods and
+            services from members of the congregation.
           </p>
           <div className="market-search">
             <Search size={18} className="market-search-icon" />

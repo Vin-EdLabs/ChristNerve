@@ -116,7 +116,8 @@ export default function DepartmentsPage() {
       <Modal
         open={open}
         onClose={() => !saving && setOpen(false)}
-        title="Create Department"
+        title="Add Department"
+        subtitle="Fill in the details below"
       >
         <form className="dept-form" onSubmit={handleCreate}>
           <Input

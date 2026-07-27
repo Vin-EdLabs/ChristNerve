@@ -23,6 +23,9 @@ import notificationRoutes from './routes/notifications';
 import chatRoutes from './routes/chat';
 import usersRoutes from './routes/users';
 import auditRoutes from './routes/audit';
+import churchPageRoutes, { publicJoinHandler } from './routes/churchPage';
+import dashboardRoutes from './routes/dashboard';
+import pastoralRoutes from './routes/pastoral';
 
 dotenv.config();
 
@@ -133,6 +136,10 @@ app.use('/api/superadmin', superadminRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/church-page', churchPageRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/pastoral', pastoralRoutes);
+app.post('/api/public/church/:slug/join', publicJoinHandler);
 
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });

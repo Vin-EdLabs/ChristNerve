@@ -7,6 +7,7 @@ import {
   isFirebaseConfigured,
   onForegroundMessage,
 } from '../../lib/firebase';
+import { syncAppBadge } from '../../utils/appBadge';
 import toast from 'react-hot-toast';
 import './NotificationBell.css';
 
@@ -68,18 +69,37 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ mode }) => {
 
   const unread = items.filter((n) => !n.is_read).length;
 
+  const applyBadge = useCallback(async (notifUnread: number) => {
+    let chatUnread = 0;
+    if (mode === 'church') {
+      try {
+        const chat = await api.get('/chat/unread-total');
+        chatUnread = Number(chat.data?.count) || 0;
+      } catch {
+        // ignore
+      }
+    }
+    await syncAppBadge(notifUnread + chatUnread);
+  }, [mode]);
+
   const fetchNotifications = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(listPath(mode));
       const rows = res.data?.data ?? res.data ?? [];
-      setItems(Array.isArray(rows) ? rows : []);
+      const list = Array.isArray(rows) ? rows : [];
+      setItems(list);
+      const unreadCount =
+        typeof res.data?.unread === 'number'
+          ? res.data.unread
+          : list.filter((n: AppNotification) => !n.is_read).length;
+      void applyBadge(unreadCount);
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [mode]);
+  }, [mode, applyBadge]);
 
   useEffect(() => {
     void fetchNotifications();
@@ -137,10 +157,15 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ mode }) => {
   const markRead = async (n: AppNotification) => {
     if (!n.is_read) {
       try {
-        await api.post(readPath(mode, n.id));
+        const res = await api.post(readPath(mode, n.id));
         setItems((prev) =>
           prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x))
         );
+        const nextUnread =
+          typeof res.data?.unread === 'number'
+            ? res.data.unread
+            : Math.max(0, unread - 1);
+        void applyBadge(nextUnread);
       } catch {
         // ignore
       }
@@ -155,6 +180,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ mode }) => {
     try {
       await api.post(readAllPath(mode));
       setItems((prev) => prev.map((x) => ({ ...x, is_read: true })));
+      void applyBadge(0);
     } catch {
       // ignore
     }

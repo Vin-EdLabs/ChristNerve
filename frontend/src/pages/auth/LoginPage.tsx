@@ -4,7 +4,7 @@ import { Cross, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
-import { getChurchSlug } from '../../utils/tenantHost';
+import { getChurchSlug, churchDomainUrl, isLocalHost } from '../../utils/tenantHost';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { applyTenantPWA } from '../../utils/applyTenantPWA';
 import { enablePushNotifications } from '../../lib/firebase';
@@ -53,8 +53,11 @@ export default function LoginPage() {
   } = useAuth();
   const [church, setChurch] = useState<ChurchInfo | null>(null);
   const [loadingChurch, setLoadingChurch] = useState(true);
+  const [mode, setMode] = useState<'member' | 'staff'>('staff');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [pin, setPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -65,17 +68,16 @@ export default function LoginPage() {
   const rgb = useMemo(() => hexToRgb(primary), [primary]);
 
   const goAfterAuth = (account: 'staff' | 'member', role?: string) => {
-    if (returnTo) {
-      navigate(returnTo, { replace: true });
+    const dest =
+      returnTo ||
+      (account === 'staff' && String(role || '').toLowerCase() === 'finance'
+        ? '/finance'
+        : '/');
+    if (isLocalHost()) {
+      window.location.assign(churchDomainUrl(slug, dest));
       return;
     }
-    if (account === 'member') {
-      navigate('/', { replace: true });
-      return;
-    }
-    navigate(String(role || '').toLowerCase() === 'finance' ? '/finance' : '/', {
-      replace: true,
-    });
+    navigate(dest, { replace: true });
   };
 
   useEffect(() => {
@@ -144,25 +146,60 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    const enablePush = async () => {
+      try {
+        const push = await enablePushNotifications();
+        if (push.token) {
+          await api.post('/notifications/device-token', { token: push.token });
+        } else if (push.needsInstall) {
+          toast(push.error || 'Add to Home Screen for notifications', { icon: '📱' });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    if (mode === 'member') {
+      let normalized = phone.replace(/\D/g, '');
+      if (normalized.startsWith('233') && normalized.length >= 12) {
+        normalized = `0${normalized.slice(3)}`;
+      } else if (normalized.length === 9) {
+        normalized = `0${normalized}`;
+      }
+      if (!/^0\d{9}$/.test(normalized)) {
+        toast.error('Phone must start with 0 (e.g. 0244123456)');
+        return;
+      }
+      if (!/^\d{4}$/.test(pin.trim())) {
+        toast.error('Enter your 4-digit PIN');
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await login(normalized, pin.trim(), slug);
+        toast.success('Welcome back');
+        await enablePush();
+        goAfterAuth('member');
+      } catch (err: unknown) {
+        const data = (err as { response?: { data?: { error?: string } } })?.response
+          ?.data;
+        toast.error(data?.error || 'Login failed');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!username.trim() || !password) {
-      toast.error('Enter your username and password');
+      toast.error('Enter your email and password');
       return;
     }
     setSubmitting(true);
     try {
       const type = await login(username.trim(), password, slug);
       toast.success('Welcome back');
-
-      // Ask for push during the login click (user gesture) so the browser prompt shows.
-      try {
-        const push = await enablePushNotifications();
-        if (push.token) {
-          await api.post('/notifications/device-token', { token: push.token });
-        }
-      } catch {
-        // ignore — user can enable later from the prompt
-      }
-
+      await enablePush();
       if (type === 'staff') {
         const me = await api.get('/auth/me').catch(() => null);
         const role = String(me?.data?.user?.role || '').toLowerCase();
@@ -171,15 +208,9 @@ export default function LoginPage() {
         goAfterAuth('member');
       }
     } catch (err: unknown) {
-      const data = (err as { response?: { data?: { error?: string; code?: string } } })
-        ?.response?.data;
-      if (data?.code === 'NEEDS_FIRST_LOGIN') {
-        toast.error(
-          'Your login is not set yet. Ask your church admin in Users to set your username and password.'
-        );
-      } else {
-        toast.error(data?.error || 'Login failed');
-      }
+      const data = (err as { response?: { data?: { error?: string } } })?.response
+        ?.data;
+      toast.error(data?.error || 'Login failed');
     } finally {
       setSubmitting(false);
     }
@@ -222,7 +253,10 @@ export default function LoginPage() {
           <p className="login-aside-eyebrow">Welcome</p>
           <h1 className="login-aside-title">{churchName}</h1>
           <p className="login-aside-tagline">
-            {church?.tagline || 'Sign in with your username and password.'}
+            {church?.tagline ||
+              (mode === 'member'
+                ? 'Sign in with your phone number and 4-digit PIN.'
+                : 'Staff sign in with your church email and password.')}
           </p>
           {church?.city && <p className="login-aside-city">{church.city}</p>}
         </div>
@@ -232,36 +266,101 @@ export default function LoginPage() {
         <form className="login-form login-form-card" onSubmit={handleSubmit}>
           <div className="login-form-accent" aria-hidden />
           <h2 className="login-form-title">Sign in</h2>
-          <p className="login-form-sub">
-            Use your username or church email. You&apos;ll land in the right place automatically.
-          </p>
 
-          <Input
-            label="Username or email"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="username or church email"
-            autoComplete="username"
-            required
-          />
-          <div className="login-password-wrap">
-            <Input
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+          {slug === 'pka' && (
+            <div className="login-demo-hint">
+              <strong>Demo login</strong>
+              <p>
+                Staff tab → <code>pastor@pka.com</code> / <code>password123</code>
+              </p>
+              <p>
+                Member tab → phone <code>0244123456</code> / PIN <code>3456</code>
+              </p>
+            </div>
+          )}
+
+          <div className="login-mode-tabs" role="tablist">
             <button
               type="button"
-              className="login-password-toggle"
-              onClick={() => setShowPassword((v) => !v)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              role="tab"
+              aria-selected={mode === 'member'}
+              className={`login-mode-tab${mode === 'member' ? ' is-active' : ''}`}
+              onClick={() => setMode('member')}
             >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              Member
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'staff'}
+              className={`login-mode-tab${mode === 'staff' ? ' is-active' : ''}`}
+              onClick={() => setMode('staff')}
+            >
+              Staff
             </button>
           </div>
+
+          {mode === 'member' ? (
+            <>
+              <p className="login-form-sub">
+                Use your phone (starts with 0). Default PIN is the last 4 digits of your number — change it anytime in Settings.
+              </p>
+              <Input
+                label="Phone number"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="0244123456"
+                inputMode="tel"
+                autoComplete="tel"
+                required
+              />
+              <Input
+                label="4-digit PIN"
+                type={showPassword ? 'text' : 'password'}
+                value={pin}
+                onChange={(e) =>
+                  setPin(e.target.value.replace(/\D/g, '').slice(0, 4))
+                }
+                placeholder="••••"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={4}
+                required
+              />
+            </>
+          ) : (
+            <>
+              <p className="login-form-sub">
+                Pastors and staff — sign in with your church email and password.
+              </p>
+              <Input
+                label="Email or username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="pastor@church.com"
+                autoComplete="username"
+                required
+              />
+              <div className="login-password-wrap">
+                <Input
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="login-password-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </>
+          )}
 
           <Button type="submit" variant="primary" block loading={submitting}>
             Sign In
@@ -353,6 +452,49 @@ export default function LoginPage() {
         .login-form-sub {
           font-size: 14px; color: #6b6560;
           margin-bottom: 4px; line-height: 1.5;
+        }
+        .login-demo-hint {
+          margin: 0 0 14px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          background: #f7f3ea;
+          border: 1px solid #e6dcc3;
+          font-size: 12px;
+          color: #5c5340;
+          line-height: 1.45;
+        }
+        .login-demo-hint strong { display: block; margin-bottom: 4px; color: #3d3424; }
+        .login-demo-hint p { margin: 2px 0; }
+        .login-demo-hint code {
+          font-family: ui-monospace, monospace;
+          font-size: 11px;
+          background: #fff;
+          padding: 1px 5px;
+          border-radius: 4px;
+        }
+        .login-mode-tabs {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+          padding: 4px;
+          margin: 8px 0 14px;
+          border-radius: 12px;
+          background: rgba(45, 27, 105, 0.06);
+        }
+        .login-mode-tab {
+          border: none;
+          background: transparent;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #6b6560;
+          cursor: pointer;
+        }
+        .login-mode-tab.is-active {
+          background: #fff;
+          color: var(--login-primary, #2d1b69);
+          box-shadow: 0 1px 4px rgba(15, 13, 20, 0.08);
         }
         .login-password-wrap { position: relative; }
         .login-password-toggle {

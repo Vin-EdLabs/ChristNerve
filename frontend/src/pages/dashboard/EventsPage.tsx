@@ -228,7 +228,8 @@ export default function EventsPage() {
       <Modal
         open={open}
         onClose={() => !saving && setOpen(false)}
-        title={editing ? 'Edit Event' : 'Create Event'}
+        title={editing ? 'Edit Event' : 'Add Event'}
+        subtitle="Fill in the details below"
       >
         <form className="event-form" onSubmit={handleSubmit}>
           <Input

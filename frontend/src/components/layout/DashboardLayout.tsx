@@ -11,24 +11,29 @@ const TITLE_MAP: Record<string, string> = {
   '/': 'Dashboard',
   '/members': 'Members',
   '/attendance': 'Attendance',
-  '/my-attendance': 'My Attendance',
   '/my-department': 'My Department',
-  '/finance': 'Finance',
+  '/finance': 'Finance Dashboard',
+  '/finance/giving': 'Giving',
+  '/finance/expenses': 'Expenses',
   '/events': 'Events',
   '/announcements': 'Announcements',
   '/departments': 'Departments',
+  '/prayer-requests': 'Prayer Requests',
+  '/follow-up': 'Follow-Up',
+  '/welfare': 'Welfare',
+  '/cell-groups': 'Cell Groups',
   '/settings': 'Settings',
   '/more': 'More',
   '/users': 'Users',
+  '/church-page': 'Church Page',
   '/audit': 'Audit Log',
-  '/market/my-listings': 'My Listings',
+  '/market/my-listings': 'My Shop',
   '/market/create': 'Create Listing',
   '/market/orders': 'Orders',
 };
 
 const MEMBER_ALLOWED = [
   '/',
-  '/my-attendance',
   '/my-department',
   '/market/my-listings',
   '/market/create',
@@ -37,9 +42,16 @@ const MEMBER_ALLOWED = [
   '/settings',
   '/more',
   '/announcements',
+  '/prayer-requests',
+  '/welfare',
 ];
 
-const FINANCE_ALLOWED = ['/finance', '/more', '/settings', '/audit'];
+const FINANCE_ALLOWED = [
+  '/finance',
+  '/more',
+  '/settings',
+  '/audit',
+];
 
 function resolveTitle(pathname: string): string {
   if (TITLE_MAP[pathname]) return TITLE_MAP[pathname];
@@ -54,7 +66,7 @@ function isFinanceRole(role?: string | null) {
 }
 
 export const DashboardLayout: React.FC = () => {
-  const { isAuthenticated, isLoading, accountType, user, needsSetup } = useAuth();
+  const { isAuthenticated, isLoading, accountType, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -63,10 +75,6 @@ export const DashboardLayout: React.FC = () => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  }
-
-  if (needsSetup) {
-    return <Navigate to="/setup-credentials" replace />;
   }
 
   if (

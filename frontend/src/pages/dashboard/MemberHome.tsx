@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CalendarCheck,
   ChevronRight,
+  HandHeart,
+  HeartHandshake,
   Megaphone,
   Network,
   Settings,
@@ -14,13 +15,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
 import type { ChurchAnnouncement } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
-
-interface AttendanceRow {
-  id: number;
-  service_type: string;
-  service_date: string;
-  checked_in_at: string;
-}
 
 interface DeptInfo {
   name?: string;
@@ -51,8 +45,6 @@ const HERO_FALLBACK =
 export default function MemberHome() {
   const { user, tenant } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
-  const [presentMonth, setPresentMonth] = useState(0);
   const [department, setDepartment] = useState<DeptInfo | null>(null);
   const [ministry, setMinistry] = useState<string | null>(null);
   const [news, setNews] = useState<ChurchAnnouncement[]>([]);
@@ -63,16 +55,16 @@ export default function MemberHome() {
     (async () => {
       setLoading(true);
       try {
-        const [attRes, deptRes, newsRes] = await Promise.all([
-          api.get('/attendance/mine').catch(() => ({ data: { data: [], stats: {} } })),
+        const [deptRes, newsRes] = await Promise.all([
           api.get('/departments/mine').catch(() => ({ data: {} })),
           api.get('/announcements').catch(() => ({ data: [] })),
         ]);
         if (cancelled) return;
 
-        setAttendance(asList<AttendanceRow>(attRes.data).slice(0, 5));
-        setPresentMonth(Number(attRes.data?.stats?.present_this_month || 0));
-        setDepartment(deptRes.data?.department || null);
+        const depts = Array.isArray(deptRes.data?.departments)
+          ? deptRes.data.departments
+          : [];
+        setDepartment(depts[0] || deptRes.data?.department || null);
         setMinistry(deptRes.data?.ministry || user?.ministry || null);
         setNews(asList<ChurchAnnouncement>(newsRes.data).slice(0, 3));
       } finally {
@@ -132,34 +124,44 @@ export default function MemberHome() {
       </div>
 
       <div className="member-home-grid">
-        <section className="mh-panel mh-panel--attend">
+        <section className="mh-panel mh-panel--shop">
           <div className="member-home-card-head">
-            <CalendarCheck size={18} />
-            <h2>My attendance</h2>
+            <HandHeart size={18} />
+            <h2>Prayer</h2>
           </div>
-          <p className="member-home-stat">
-            <strong>{presentMonth}</strong>
-            <span>services this month</span>
+          <p className="member-home-desc">
+            Send a prayer request privately to your pastors.
           </p>
-          {attendance.length === 0 ? (
-            <p className="member-home-empty">No check-ins recorded yet.</p>
-          ) : (
-            <ul className="member-home-list">
-              {attendance.map((row) => (
-                <li key={row.id}>
-                  <span>{row.service_type}</span>
-                  <time>
-                    {new Date(row.service_date).toLocaleDateString('en-GH', {
-                      day: 'numeric',
-                      month: 'short',
-                    })}
-                  </time>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Link to="/my-attendance" className="member-home-link">
-            View full history <ChevronRight size={14} />
+          <Link to="/prayer-requests" className="member-home-link">
+            Send prayer request <ChevronRight size={14} />
+          </Link>
+        </section>
+
+        <section className="mh-panel mh-panel--dept">
+          <div className="member-home-card-head">
+            <HeartHandshake size={18} />
+            <h2>Welfare</h2>
+          </div>
+          <p className="member-home-desc">
+            Ask for practical care — hospital, bereavement, or financial need.
+          </p>
+          <Link to="/welfare" className="member-home-link">
+            Request care <ChevronRight size={14} />
+          </Link>
+        </section>
+      </div>
+
+      <div className="member-home-grid">
+        <section className="mh-panel mh-panel--shop">
+          <div className="member-home-card-head">
+            <Store size={18} />
+            <h2>My shop</h2>
+          </div>
+          <p className="member-home-desc">
+            Manage your marketplace listings and vendor orders.
+          </p>
+          <Link to="/market/my-listings" className="member-home-link">
+            Open my shop <ChevronRight size={14} />
           </Link>
         </section>
 
@@ -180,7 +182,7 @@ export default function MemberHome() {
             <p className="member-home-desc">{department.description}</p>
           )}
           <Link to="/my-department" className="member-home-link">
-            Department details <ChevronRight size={14} />
+            Team & meetings <ChevronRight size={14} />
           </Link>
         </section>
       </div>
@@ -212,6 +214,18 @@ export default function MemberHome() {
       <section className="mh-panel mh-links">
         <h2>Quick links</h2>
         <div className="member-home-action-row">
+          <Link to="/prayer-requests" className="mh-link">
+            <span className="mh-link-icon">
+              <HandHeart size={18} />
+            </span>
+            <span>Prayer</span>
+          </Link>
+          <Link to="/welfare" className="mh-link">
+            <span className="mh-link-icon">
+              <HeartHandshake size={18} />
+            </span>
+            <span>Welfare</span>
+          </Link>
           <Link to="/announcements" className="mh-link">
             <span className="mh-link-icon">
               <Megaphone size={18} />
@@ -223,12 +237,6 @@ export default function MemberHome() {
               <Store size={18} />
             </span>
             <span>Market</span>
-          </Link>
-          <Link to="/market/my-listings" className="mh-link">
-            <span className="mh-link-icon">
-              <Store size={18} />
-            </span>
-            <span>My shop</span>
           </Link>
           <Link to="/settings" className="mh-link">
             <span className="mh-link-icon">

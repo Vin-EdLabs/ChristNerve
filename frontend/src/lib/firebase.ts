@@ -7,6 +7,7 @@ import {
   onMessage,
   type Messaging,
 } from 'firebase/messaging';
+import { ensureAppServiceWorker, isIosDevice, isPwaStandalone } from '../utils/pwa';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
@@ -120,36 +121,32 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-async function ensurePushServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (!('serviceWorker' in navigator)) return null;
-  try {
-    const existing = await navigator.serviceWorker.getRegistration('/');
-    if (existing?.active?.scriptURL?.includes('/sw.js')) {
-      await navigator.serviceWorker.ready;
-      return existing;
-    }
-    const registration = await navigator.serviceWorker.register('/sw.js', {
-      scope: '/',
-    });
-    await navigator.serviceWorker.ready;
-    return registration;
-  } catch (err) {
-    console.warn('[firebase] SW register failed:', err);
-    return null;
-  }
-}
-
 /**
- * Ask for permission (browser prompt), then register FCM token when VAPID is available.
- * Safe to call from a login click / Enable button (user gesture).
+ * Ask for permission, then register FCM token.
+ * On iPhone, Web Push only works after Add to Home Screen (standalone).
  */
 export async function enablePushNotifications(): Promise<{
   permission: NotificationPermission | 'unsupported';
   token: string | null;
   error?: string;
+  needsInstall?: boolean;
 }> {
   if (typeof Notification === 'undefined') {
-    return { permission: 'unsupported', token: null, error: 'Notifications not supported in this browser' };
+    return {
+      permission: 'unsupported',
+      token: null,
+      error: 'Notifications not supported in this browser',
+    };
+  }
+
+  if (isIosDevice() && !isPwaStandalone()) {
+    return {
+      permission: Notification.permission,
+      token: null,
+      needsInstall: true,
+      error:
+        'On iPhone, add ChristNerve to your Home Screen first (Share → Add to Home Screen), then open the app and enable notifications.',
+    };
   }
 
   const granted = await requestNotificationPermission();
@@ -161,7 +158,7 @@ export async function enablePushNotifications(): Promise<{
       token: null,
       error:
         permission === 'denied'
-          ? 'Notifications are blocked. Enable them in your browser settings.'
+          ? 'Notifications are blocked. Enable them in your browser or phone settings.'
           : 'Notification permission was not granted',
     };
   }
@@ -186,7 +183,7 @@ export async function enablePushNotifications(): Promise<{
   }
 
   try {
-    const registration = await ensurePushServiceWorker();
+    const registration = await ensureAppServiceWorker();
     if (!registration) {
       return { permission, token: null, error: 'Service worker failed to register' };
     }

@@ -9,6 +9,7 @@
  *   http://localhost:5174               → landing
  *   http://localhost:5174?church=pka    → church "pka"
  *   http://localhost:5174/market?church=pka
+ *   http://localhost:5174/admin         → superadmin
  */
 
 const CHURCH_SLUG_KEY = 'christnerve_church_slug';
@@ -74,8 +75,9 @@ export const getChurchSlug = (): string | null => {
 
 /**
  * Platform = landing / superadmin (no church tenant).
- * Local: no ?church= on `/` clears session and shows landing.
  * Local: `/admin` always platform.
+ * Local: bare `/` (no ?church=) is always the marketing landing.
+ * Local: other paths keep church mode when session has a slug or church token.
  */
 export const isPlatformHost = (): boolean => {
   const host = hostname();
@@ -91,13 +93,15 @@ export const isPlatformHost = (): boolean => {
       rememberChurchSlug(fromQuery);
       return false;
     }
-    // Explicit landing URL without church param
+
+    // Explicit marketing landing — never treat as church portal
     if (path === '/' || path === '') {
-      clearChurchSlug();
       return true;
     }
-    // In-app routes may briefly lose ?church= — session keeps church mode
-    return !sessionStorage.getItem(CHURCH_SLUG_KEY);
+
+    const sessionSlug = sessionStorage.getItem(CHURCH_SLUG_KEY)?.trim().toLowerCase();
+    const hasChurchToken = Boolean(localStorage.getItem('church_token'));
+    return !sessionSlug && !hasChurchToken;
   }
 
   return !slugFromProductionHost();
@@ -105,9 +109,17 @@ export const isPlatformHost = (): boolean => {
 
 export const isLandingPage = (): boolean => {
   const host = hostname();
-  if (host.startsWith('christnerve')) return true;
-  if (isLocalHost() && !new URLSearchParams(window.location.search).get('church')) {
+  if (host.startsWith('christnerve')) {
     return window.location.pathname === '/' || window.location.pathname === '';
+  }
+  if (isLocalHost()) {
+    const hasChurch = Boolean(
+      new URLSearchParams(window.location.search).get('church')
+    );
+    return (
+      !hasChurch &&
+      (window.location.pathname === '/' || window.location.pathname === '')
+    );
   }
   return false;
 };

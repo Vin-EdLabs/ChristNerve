@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import type { ChurchTenant, ChurchUser } from '../types';
-import { getChurchSlug } from '../utils/tenantHost';
+import { getChurchSlug, rememberChurchSlug } from '../utils/tenantHost';
 import { applyTenantPWA } from '../utils/applyTenantPWA';
 
 interface AuthContextType {
@@ -78,12 +78,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const login = useCallback(
-    async (username: string, password: string, churchSlug: string) => {
+    async (identifier: string, password: string, churchSlug: string) => {
       const slug = churchSlug || getChurchSlug() || '';
+      const isPhone = /^0\d{9}$/.test(identifier);
       const res = await api.post('/auth/login', {
-        username,
-        email: username,
-        password,
+        ...(isPhone
+          ? { phone: identifier, pin: password }
+          : { username: identifier, email: identifier, password }),
         churchSlug: slug,
       });
       const type: 'staff' | 'member' =
@@ -92,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.setItem('church_token', res.data.token);
       localStorage.setItem('church_slug', slug);
       localStorage.setItem('account_type', type);
+      if (slug) rememberChurchSlug(slug);
       setUser(res.data.user);
       setTenant(res.data.tenant);
       applyTenantPWA(res.data.tenant);

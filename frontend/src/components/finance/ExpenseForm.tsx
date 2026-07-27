@@ -90,13 +90,14 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
       open={open}
       onClose={onClose}
       title="Add Expense"
+      subtitle="Fill in the details below"
       footer={
         <>
-          <Button variant="ghost" type="button" onClick={onClose}>
-            Cancel
-          </Button>
           <Button variant="primary" type="submit" form="expense-form" loading={loading}>
             Add Expense
+          </Button>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
           </Button>
         </>
       }

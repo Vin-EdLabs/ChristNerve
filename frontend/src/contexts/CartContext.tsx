@@ -21,6 +21,7 @@ export interface CartItem {
   price_max?: number | null;
   image?: string | null;
   sellerName: string;
+  sellerSlug?: string | null;
   whatsapp?: string | null;
   phone?: string | null;
   memberId?: number | null;
@@ -66,6 +67,7 @@ function listingToItem(listing: MarketListing, qty = 1): CartItem {
     sellerName:
       [listing.first_name, listing.last_name].filter(Boolean).join(' ') ||
       'Seller',
+    sellerSlug: listing.marketplace_slug || null,
     whatsapp: listing.whatsapp || null,
     phone: listing.phone || null,
     memberId:
@@ -105,6 +107,7 @@ function normalizeStored(raw: unknown): CartItem[] {
         price_max: r.price_max != null ? Number(r.price_max) : null,
         image: r.image ? resolveMediaUrl(r.image) : null,
         sellerName: r.sellerName || 'Seller',
+        sellerSlug: r.sellerSlug ?? null,
         whatsapp: r.whatsapp ?? null,
         phone: r.phone ?? null,
         memberId: r.memberId != null ? Number(r.memberId) : null,

@@ -1,4 +1,4 @@
-/* ChristNerve SW — FCM push only. No fetch hijacking (safe with Vite). */
+/* ChristNerve SW — FCM push + home-screen badge. No fetch hijacking (safe with Vite). */
 
 importScripts(
   'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js'
@@ -17,7 +17,22 @@ firebase.initializeApp({
   measurementId: 'G-JB18M3CW3V',
 });
 
-firebase.messaging().onBackgroundMessage((payload) => {
+async function applyBadge(raw) {
+  const n = Math.max(0, parseInt(String(raw || ''), 10) || 0);
+  try {
+    if (n <= 0 && self.navigator && self.navigator.clearAppBadge) {
+      await self.navigator.clearAppBadge();
+      return;
+    }
+    if (self.navigator && self.navigator.setAppBadge) {
+      await self.navigator.setAppBadge(n > 0 ? n : undefined);
+    }
+  } catch (_) {
+    // Badging API not available in this SW context
+  }
+}
+
+firebase.messaging().onBackgroundMessage(async (payload) => {
   const title =
     (payload.notification && payload.notification.title) ||
     (payload.data && payload.data.title) ||
@@ -28,12 +43,22 @@ firebase.messaging().onBackgroundMessage((payload) => {
     '';
   const link =
     (payload.data && (payload.data.link || payload.data.url)) || '/';
+  const badgeCount =
+    payload.data && payload.data.badge != null ? payload.data.badge : null;
 
-  self.registration.showNotification(title, {
+  try {
+    if (badgeCount != null) await applyBadge(badgeCount);
+  } catch (_) {
+    // ignore
+  }
+
+  await self.registration.showNotification(title, {
     body,
     icon: '/logo.png',
-    badge: '/icons/christnerve-192.png',
-    data: { link, url: link, ...(payload.data || {}) },
+    badge: '/logo.png',
+    tag: 'christnerve',
+    renotify: true,
+    data: { link, url: link, badge: badgeCount, ...(payload.data || {}) },
   });
 });
 
@@ -82,4 +107,14 @@ self.addEventListener('notificationclick', (event) => {
         return undefined;
       })
   );
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'set-badge') {
+    event.waitUntil(applyBadge(data.count));
+  }
+  if (data.type === 'clear-badge') {
+    event.waitUntil(applyBadge(0));
+  }
 });

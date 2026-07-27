@@ -3,37 +3,11 @@ import ReactDOM from 'react-dom/client';
 import { Toaster } from 'react-hot-toast';
 import App from './App';
 import { initFirebaseAnalytics } from './lib/firebase';
+import { ensureAppServiceWorker } from './utils/pwa';
 import './index.css';
 
 void initFirebaseAnalytics();
-
-async function setupServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-
-  // Wipe broken old caches/SWs that blanked the app
-  try {
-    const regs = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(regs.map((r) => r.unregister()));
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-    }
-  } catch {
-    // ignore
-  }
-
-  // Dev: stay SW-free so Vite/HMR works. Push SW registers on demand via firebase.ts.
-  if (import.meta.env.DEV) return;
-
-  try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    console.log('ChristNerve SW registered:', reg.scope);
-  } catch (err) {
-    console.error('SW registration failed:', err);
-  }
-}
-
-void setupServiceWorker();
+void ensureAppServiceWorker();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
