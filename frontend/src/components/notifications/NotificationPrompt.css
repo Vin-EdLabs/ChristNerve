@@ -1,0 +1,92 @@
+.notif-prompt {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--mobile-tabbar-height, 64px) + 28px + env(safe-area-inset-bottom, 0px));
+  z-index: 120;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 12px 40px rgba(15, 13, 10, 0.18);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  animation: notifPromptIn 0.35s ease;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+[data-theme='dark'] .notif-prompt {
+  background: rgba(28, 24, 48, 0.82);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes notifPromptIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notif-prompt-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--accent-light);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notif-prompt-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-prompt-body strong {
+  font-size: 14px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.notif-prompt-body p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.notif-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notif-prompt-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+@media (min-width: 769px) {
+  .notif-prompt {
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+    margin: 0;
+  }
+}

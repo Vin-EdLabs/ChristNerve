@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+
+    <!-- PWA Manifest — dynamic per church tenant -->
+    <link rel="manifest" href="/api/public/manifest" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ChristNerve" />
+
+    <!-- Android / browser theme -->
+    <meta name="theme-color" content="#2D1B69" id="theme-color-meta" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Default favicon — ChristNerve brand (church hosts override dynamically) -->
+    <link rel="icon" type="image/png" href="/logo.png" id="favicon" />
+    <link rel="apple-touch-icon" href="/logo.png" id="apple-touch-icon" />
+    <link rel="apple-touch-startup-image" href="/logo.png" />
+
+    <title>ChristNerve</title>
+    <meta
+      name="description"
+      content="ChristNerve — The Nerve System of Your Church. Premium church management and member marketplace for Ghana."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
