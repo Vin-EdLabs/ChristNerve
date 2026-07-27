@@ -1,6 +1,9 @@
 /**
  * Production-safe DB migrate + demo market seed.
- * Runs from backend: npm run migrate  |  npm run build (postbuild)
+ * Runs from backend: npm run migrate  |  npm run build
+ *
+ * Ownership: if you see "must be owner of table", run once as postgres:
+ *   sudo -u postgres psql -d christnerve -f database/migrate-fix-ownership.sql
  */
 const fs = require('fs');
 const path = require('path');
@@ -27,7 +30,6 @@ function loadEnvFile(filePath) {
 }
 
 function databaseDir() {
-  // backend/scripts → ../../database  OR  repo/database next to backend
   const candidates = [
     path.join(__dirname, '../../database'),
     path.join(__dirname, '../database'),
@@ -40,39 +42,21 @@ function databaseDir() {
   return candidates[0];
 }
 
+function isOwnerError(err) {
+  const msg = String(err && err.message ? err.message : err);
+  const code = err && err.code;
+  return code === '42501' || /must be owner of/i.test(msg);
+}
+
 async function runFile(client, file) {
   if (!fs.existsSync(file)) {
     console.log('  skip (missing):', path.basename(file));
-    return;
+    return { ok: true, skipped: true };
   }
   console.log('==>', path.basename(file));
   const sql = fs.readFileSync(file, 'utf8');
   await client.query(sql);
-}
-
-async function ensurePrivileges(client) {
-  // If tables were created as postgres, grant the app role access.
-  await client.query(`
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'school_app_user') THEN
-    BEGIN
-      EXECUTE 'ALTER TABLE IF EXISTS church_tenants OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS church_gallery_images OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS church_join_applications OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS market_listings OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS market_listing_images OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS market_categories OWNER TO school_app_user';
-      EXECUTE 'ALTER TABLE IF EXISTS church_members OWNER TO school_app_user';
-      EXECUTE 'GRANT ALL ON ALL TABLES IN SCHEMA public TO school_app_user';
-      EXECUTE 'GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO school_app_user';
-      EXECUTE 'GRANT USAGE, CREATE ON SCHEMA public TO school_app_user';
-    EXCEPTION WHEN insufficient_privilege THEN
-      RAISE NOTICE 'Could not reassign ownership (not superuser) — continuing';
-    END;
-  END IF;
-END $$;
-`);
+  return { ok: true };
 }
 
 async function main() {
@@ -103,7 +87,6 @@ async function main() {
     'migrate-market-chat.sql',
     'migrate-market-chat-listing.sql',
     'migrate-pastoral-care.sql',
-    // Always refresh demo marketplace listings on build/migrate
     'migrate-demo-market-20.sql',
   ];
 
@@ -117,22 +100,26 @@ async function main() {
   console.log('[migrate] database dir:', dbDir);
   console.log('[migrate] seed demo:', seedDemo);
 
+  let ownerErrors = 0;
+  let hardFail = null;
+
   for (const name of files) {
     try {
       await runFile(client, path.join(dbDir, name));
     } catch (err) {
-      // Don't abort entire deploy on one optional migration — log and continue
       console.error(`[migrate] FAILED ${name}:`, err.message || err);
-      if (String(name).includes('hotfix') || String(name).includes('visit')) {
-        throw err;
+      if (isOwnerError(err)) {
+        ownerErrors += 1;
+        console.error(
+          '[migrate] HINT: run as postgres → sudo -u postgres psql -d christnerve -f database/migrate-fix-ownership.sql'
+        );
+        continue;
+      }
+      // Keep going for most files; remember first hard failure on demo market
+      if (name === 'migrate-demo-market-20.sql' || name === 'seed.sql') {
+        hardFail = err;
       }
     }
-  }
-
-  try {
-    await ensurePrivileges(client);
-  } catch (err) {
-    console.warn('[migrate] privilege pass skipped:', err.message || err);
   }
 
   const pka = await client.query(
@@ -169,6 +156,19 @@ async function main() {
   );
 
   await client.end();
+
+  if (ownerErrors > 0) {
+    console.error(
+      `[migrate] ${ownerErrors} migration(s) skipped due to table ownership. Fix ownership then re-run: SEED_DEMO=1 npm run migrate`
+    );
+    process.exit(1);
+  }
+
+  if (hardFail) {
+    console.error('[migrate] demo seed failed:', hardFail.message || hardFail);
+    process.exit(1);
+  }
+
   console.log('[migrate] done');
 }
 
