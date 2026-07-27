@@ -11,7 +11,7 @@
   overflow: visible;
   transform: none;
   isolation: auto;
-  padding-top: var(--navbar-height, 64px);
+  padding-top: calc(var(--navbar-height, 64px) + env(safe-area-inset-top, 0px));
 }
 
 .landing-nav {
@@ -20,7 +20,9 @@
   left: 0;
   right: 0;
   z-index: 300;
-  height: var(--navbar-height, 64px);
+  height: calc(var(--navbar-height, 64px) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   background: rgba(243, 241, 247, 0.98);

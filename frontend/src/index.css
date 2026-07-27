@@ -72,6 +72,10 @@
   --sidebar-width: 248px;
   --mobile-tabbar-height: 64px;
   --topbar-height: 68px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 [data-theme='dark'] {
@@ -978,19 +982,20 @@ h1, h2, h3, h4 {
 }
 
 .topbar {
-  min-height: var(--topbar-height);
+  min-height: calc(var(--topbar-height) + var(--safe-top));
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 10px 24px;
+  padding: calc(10px + var(--safe-top)) 24px 10px;
   position: fixed;
   top: 0;
   left: var(--sidebar-width);
   right: 0;
   z-index: 200;
+  box-sizing: border-box;
   transform: none !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -1004,7 +1009,7 @@ h1, h2, h3, h4 {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-top: var(--topbar-height);
+  padding-top: calc(var(--topbar-height) + var(--safe-top));
 }
 
 .topbar-left {
@@ -1575,7 +1580,8 @@ h1, h2, h3, h4 {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  /* Sit lower — just above the home indicator, matching market */
+  bottom: max(4px, var(--safe-bottom));
   height: var(--mobile-tabbar-height);
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.5);
@@ -1654,7 +1660,9 @@ h1, h2, h3, h4 {
 
 /* ---------- Public navbar ---------- */
 .public-navbar {
-  height: var(--navbar-height);
+  height: calc(var(--navbar-height) + var(--safe-top));
+  padding-top: var(--safe-top);
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.94);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -1685,14 +1693,14 @@ h1, h2, h3, h4 {
   width: 100%;
   max-width: 1280px;
   margin: 0 auto;
-  height: 100%;
+  height: var(--navbar-height);
   display: grid;
   grid-template-columns: 44px 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 0 14px;
-  padding-left: max(14px, env(safe-area-inset-left, 0px));
-  padding-right: max(14px, env(safe-area-inset-right, 0px));
+  padding-left: max(14px, var(--safe-left));
+  padding-right: max(14px, var(--safe-right));
   position: relative;
 }
 
@@ -2224,8 +2232,8 @@ h1, h2, h3, h4 {
 .market-shell-body {
   flex: 1 0 auto;
   min-height: 0;
-  padding-top: var(--navbar-height);
-  padding-bottom: calc(var(--mobile-tabbar-height) + 28px + env(safe-area-inset-bottom, 0px));
+  padding-top: calc(var(--navbar-height) + var(--safe-top));
+  padding-bottom: calc(var(--mobile-tabbar-height) + 16px + var(--safe-bottom));
   background: #ffffff;
 }
 
@@ -3093,6 +3101,7 @@ h1, h2, h3, h4 {
 @media (max-width: 900px) {
   .login-split {
     grid-template-columns: 1fr;
+    padding-top: var(--safe-top);
   }
   .login-brand {
     display: none;
@@ -3129,17 +3138,18 @@ h1, h2, h3, h4 {
     max-width: 100%;
     overflow-x: hidden;
     overflow-y: visible;
-    padding-top: var(--topbar-height);
+    padding-top: calc(var(--topbar-height) + var(--safe-top));
   }
 
   .topbar {
     left: 0;
     right: 0;
     width: 100%;
-    padding: 8px 14px;
+    padding: calc(8px + var(--safe-top)) 14px 8px;
     gap: 10px;
     position: fixed !important;
     top: 0 !important;
+    min-height: calc(var(--topbar-height) + var(--safe-top));
   }
 
   .mobile-tabbar {
@@ -3148,7 +3158,7 @@ h1, h2, h3, h4 {
 
   .dashboard-content {
     padding: 12px 12px 0;
-    padding-bottom: calc(12px + var(--mobile-tabbar-height) + 20px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(12px + var(--mobile-tabbar-height) + 12px + var(--safe-bottom));
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -3638,8 +3648,8 @@ h1, h2, h3, h4 {
   display: flex;
   flex-direction: column;
   min-height: calc(
-    100dvh - var(--navbar-height) - var(--mobile-tabbar-height) -
-      env(safe-area-inset-bottom, 0px)
+    100dvh - var(--navbar-height) - var(--safe-top) - var(--mobile-tabbar-height) -
+      var(--safe-bottom)
   );
   max-width: 720px;
   width: 100%;

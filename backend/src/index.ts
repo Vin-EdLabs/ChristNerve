@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
@@ -118,19 +117,9 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'Too many login attempts. Try again in 15 minutes.',
-  },
-});
-
 app.use(resolveChurchTenant);
 
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/finance', financeRoutes);
