@@ -19,23 +19,13 @@ var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (
 }) : function(o, v) {
     o["default"] = v;
 });
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -122,18 +112,23 @@ async function sendViaAdmin(token, payload) {
     try {
         if (!app)
             ensureAdmin();
+        const badge = payload.badge != null && Number.isFinite(Number(payload.badge))
+            ? Math.max(0, Math.floor(Number(payload.badge)))
+            : undefined;
+        const data = {
+            title: payload.title,
+            body: payload.body,
+            link: payload.link || '',
+            ...(badge != null ? { badge: String(badge) } : {}),
+            ...(payload.data || {}),
+        };
         await (0, messaging_1.getMessaging)(app || undefined).send({
             token,
             notification: {
                 title: payload.title,
                 body: payload.body,
             },
-            data: {
-                title: payload.title,
-                body: payload.body,
-                link: payload.link || '',
-                ...(payload.data || {}),
-            },
+            data,
             webpush: {
                 fcmOptions: {
                     link: payload.link || '/',
@@ -142,6 +137,12 @@ async function sendViaAdmin(token, payload) {
                     title: payload.title,
                     body: payload.body,
                     icon: '/logo.png',
+                    // Monochrome status-bar icon (Android); numeric badge goes via data + Badging API
+                    badge: '/logo.png',
+                    ...(badge != null ? { renotify: true, tag: 'christnerve' } : {}),
+                },
+                headers: {
+                    Urgency: 'high',
                 },
             },
         });
@@ -176,9 +177,13 @@ async function sendViaLegacyServerKey(token, payload) {
                 notification: {
                     title: payload.title,
                     body: payload.body,
+                    ...(payload.badge != null
+                        ? { badge: Math.max(0, Math.floor(Number(payload.badge))) }
+                        : {}),
                 },
                 data: {
                     link: payload.link || '',
+                    ...(payload.badge != null ? { badge: String(payload.badge) } : {}),
                     ...(payload.data || {}),
                 },
             }),

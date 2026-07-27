@@ -192,6 +192,54 @@ router.get('/mine', async (req, res) => {
     }
 });
 /**
+ * GET /api/attendance/member/:memberId — last services + present/absent for profile
+ */
+router.get('/member/:memberId', async (req, res) => {
+    try {
+        if (req.accountType === 'member') {
+            res.status(403).json({ error: 'Staff only' });
+            return;
+        }
+        const churchId = req.churchTenant.id;
+        const memberId = parseInt(req.params.memberId, 10);
+        if (Number.isNaN(memberId)) {
+            res.status(400).json({ error: 'Invalid member id' });
+            return;
+        }
+        const services = await db_1.pool.query(`SELECT a.id, a.service_type, a.service_date,
+              EXISTS (
+                SELECT 1 FROM church_member_attendance cma
+                WHERE cma.attendance_id = a.id AND cma.member_id = $2
+              ) AS present
+       FROM church_attendance a
+       WHERE a.church_id = $1
+       ORDER BY a.service_date DESC, a.id DESC
+       LIMIT 8`, [churchId, memberId]);
+        const presentCount = services.rows.filter((r) => r.present).length;
+        const total = services.rows.length;
+        let streak = 0;
+        for (const row of services.rows) {
+            if (row.present)
+                streak += 1;
+            else
+                break;
+        }
+        res.json({
+            data: services.rows,
+            stats: {
+                present: presentCount,
+                total,
+                percentage: total ? Math.round((presentCount / total) * 100) : 0,
+                streak,
+            },
+        });
+    }
+    catch (err) {
+        console.error('Member attendance profile error:', err);
+        res.status(500).json({ error: 'Failed to fetch member attendance' });
+    }
+});
+/**
  * GET /api/attendance/:id
  */
 router.get('/:id', async (req, res) => {

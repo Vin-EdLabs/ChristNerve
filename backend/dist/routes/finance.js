@@ -5,8 +5,30 @@ const db_1 = require("../db");
 const churchAuth_1 = require("../middleware/churchAuth");
 const churchTenant_1 = require("../middleware/churchTenant");
 const audit_1 = require("../services/audit");
+const notifications_1 = require("./notifications");
 const router = (0, express_1.Router)();
 router.use(churchTenant_1.requireChurchTenant, churchAuth_1.requireChurchAuth);
+function staffFinanceOnly(req, res) {
+    if (req.accountType === 'member') {
+        res.status(403).json({ error: 'Staff only' });
+        return false;
+    }
+    return true;
+}
+async function notifyFinanceSafe(opts) {
+    try {
+        await (0, notifications_1.notifyChurchUsers)({
+            churchId: opts.churchId,
+            userType: 'staff',
+            title: opts.title,
+            body: opts.body,
+            link: opts.link || '/finance',
+        });
+    }
+    catch (err) {
+        console.warn('Finance notify failed:', err);
+    }
+}
 async function nextReceiptNumber() {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -32,6 +54,8 @@ async function nextReceiptNumber() {
  */
 router.get('/giving/summary', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const byType = await db_1.pool.query(`SELECT giving_type, COALESCE(SUM(amount), 0)::numeric AS total, COUNT(*)::int AS count
        FROM church_giving
@@ -86,6 +110,8 @@ router.get('/giving/summary', async (req, res) => {
  */
 router.get('/giving', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const type = req.query.type;
         const from = req.query.from;
@@ -146,6 +172,8 @@ router.get('/giving', async (req, res) => {
  */
 router.post('/giving', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const userId = req.churchUser.id;
         const { member_id, giving_type, amount, payment_method, mobile_money_ref, service_date, notes, currency, } = req.body;
@@ -195,6 +223,27 @@ router.post('/giving', async (req, res) => {
             entityId: row.id,
             summary: `Recorded ${giving_type} of GHS ${amt.toFixed(2)}`,
         });
+        await notifyFinanceSafe({
+            churchId,
+            title: 'Giving recorded',
+            body: `${giving_type}: GHS ${amt.toFixed(2)} · Receipt ${receipt_number}`,
+            link: '/finance/giving',
+        });
+        if (member_id) {
+            try {
+                await (0, notifications_1.notifyChurchUsers)({
+                    churchId,
+                    userType: 'member',
+                    userId: Number(member_id),
+                    title: 'Giving received — thank you',
+                    body: `Your ${giving_type} of GHS ${amt.toFixed(2)} was recorded.`,
+                    link: '/',
+                });
+            }
+            catch {
+                /* ignore */
+            }
+        }
         res.status(201).json(row);
     }
     catch (err) {
@@ -207,6 +256,8 @@ router.post('/giving', async (req, res) => {
  */
 router.get('/expenses', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const category = req.query.category;
         const from = req.query.from;
@@ -262,6 +313,8 @@ router.get('/expenses', async (req, res) => {
  */
 router.post('/expenses', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const userId = req.churchUser.id;
         const { category, description, amount, payment_method, expense_date, receipt_url, currency, } = req.body;
@@ -302,6 +355,12 @@ router.post('/expenses', async (req, res) => {
             entityId: row.id,
             summary: `Recorded expense “${category}” of GHS ${amt.toFixed(2)}`,
         });
+        await notifyFinanceSafe({
+            churchId,
+            title: 'Expense recorded',
+            body: `${category}: GHS ${amt.toFixed(2)}`,
+            link: '/finance/expenses',
+        });
         res.status(201).json(row);
     }
     catch (err) {
@@ -314,6 +373,8 @@ router.post('/expenses', async (req, res) => {
  */
 router.get('/report', async (req, res) => {
     try {
+        if (!staffFinanceOnly(req, res))
+            return;
         const churchId = req.churchTenant.id;
         const now = new Date();
         const month = parseInt(String(req.query.month || now.getMonth() + 1), 10);

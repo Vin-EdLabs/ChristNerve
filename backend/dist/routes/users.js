@@ -59,7 +59,7 @@ router.get('/', async (req, res) => {
         }
         const churchId = req.churchTenant.id;
         const result = await db_1.pool.query(`SELECT id, church_id, first_name, last_name, email, phone, role,
-              avatar_url, is_active, last_login, created_at
+              avatar_url, is_active, last_login, created_at, member_id
        FROM church_users
        WHERE church_id = $1
        ORDER BY
@@ -182,6 +182,76 @@ router.put('/:id', async (req, res) => {
     catch (err) {
         console.error('Update user error:', err);
         res.status(500).json({ error: 'Failed to update user' });
+    }
+});
+/**
+ * POST /api/users/promote-member
+ * Create a staff login linked to an existing member (dual role).
+ * Body: { member_id, email, password, role?, phone? }
+ */
+router.post('/promote-member', async (req, res) => {
+    try {
+        if (!requireStaffAdmin(req, res))
+            return;
+        const churchId = req.churchTenant.id;
+        const actor = req.churchUser;
+        const { member_id, email, password, role, phone } = req.body;
+        if (!member_id || !email || !password) {
+            res.status(400).json({
+                error: 'member_id, email, and password are required',
+            });
+            return;
+        }
+        const member = await db_1.pool.query(`SELECT * FROM church_members WHERE id = $1 AND church_id = $2`, [member_id, churchId]);
+        if (member.rows.length === 0) {
+            res.status(404).json({ error: 'Member not found' });
+            return;
+        }
+        const m = member.rows[0];
+        const linked = await db_1.pool.query(`SELECT id FROM church_users WHERE church_id = $1 AND member_id = $2`, [churchId, member_id]);
+        if (linked.rows.length > 0) {
+            res.status(409).json({
+                error: 'This member is already linked to a staff account',
+                user_id: linked.rows[0].id,
+            });
+            return;
+        }
+        const nextRole = ROLES.includes(role) ? role : 'secretary';
+        const hash = await bcryptjs_1.default.hash(String(password), 10);
+        const result = await db_1.pool.query(`INSERT INTO church_users (
+         church_id, first_name, last_name, email, phone, role, password_hash, member_id
+       ) VALUES ($1,$2,$3,LOWER($4),$5,$6,$7,$8)
+       RETURNING id, church_id, first_name, last_name, email, phone, role,
+                 avatar_url, is_active, last_login, created_at, member_id`, [
+            churchId,
+            m.first_name,
+            m.last_name,
+            email,
+            phone || m.phone || null,
+            nextRole,
+            hash,
+            member_id,
+        ]);
+        await (0, audit_1.writeAudit)({
+            churchId,
+            actorType: 'staff',
+            actorId: actor.id,
+            actorName: `${actor.first_name} ${actor.last_name}`,
+            action: 'user.promote_member',
+            entityType: 'church_user',
+            entityId: result.rows[0].id,
+            summary: `Promoted member ${m.first_name} ${m.last_name} to staff (${nextRole})`,
+        });
+        res.status(201).json(result.rows[0]);
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('unique') || msg.includes('duplicate')) {
+            res.status(409).json({ error: 'Email already exists for this church' });
+            return;
+        }
+        console.error('Promote member error:', err);
+        res.status(500).json({ error: 'Failed to promote member' });
     }
 });
 exports.default = router;

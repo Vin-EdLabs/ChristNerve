@@ -439,6 +439,36 @@ router.post('/churches/:id/reject', async (req, res) => {
     }
 });
 /**
+ * DELETE /api/superadmin/churches/:id
+ * Permanently remove a church tenant and all cascaded church data.
+ */
+router.delete('/churches/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (Number.isNaN(id)) {
+            res.status(400).json({ error: 'Invalid church id' });
+            return;
+        }
+        const existing = await db_1.pool.query('SELECT id, name, slug FROM church_tenants WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            res.status(404).json({ error: 'Church not found' });
+            return;
+        }
+        const church = existing.rows[0];
+        // Related rows cascade via FK (members, users, events, market, etc.)
+        await db_1.pool.query('DELETE FROM church_tenants WHERE id = $1', [id]);
+        res.json({
+            ok: true,
+            message: 'Church deleted permanently',
+            church,
+        });
+    }
+    catch (err) {
+        console.error('Delete church error:', err);
+        res.status(500).json({ error: 'Failed to delete church' });
+    }
+});
+/**
  * PUT /api/superadmin/churches/:id
  */
 router.put('/churches/:id', async (req, res) => {
@@ -675,11 +705,27 @@ router.get('/notifications', async (_req, res) => {
           OR (church_id IS NULL AND user_id IS NULL)
        ORDER BY created_at DESC
        LIMIT 50`);
-        res.json({ data: result.rows });
+        const unread = result.rows.filter((r) => !r.is_read).length;
+        res.json({ data: result.rows, unread });
     }
     catch (err) {
         console.error('List platform notifications error:', err);
         res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+/**
+ * GET /api/superadmin/notifications/unread-count
+ */
+router.get('/notifications/unread-count', async (_req, res) => {
+    try {
+        const result = await db_1.pool.query(`SELECT COUNT(*)::int AS c FROM notifications
+       WHERE is_read = false
+         AND (user_type = 'superadmin' OR (church_id IS NULL AND user_id IS NULL))`);
+        res.json({ count: result.rows[0]?.c ?? 0 });
+    }
+    catch (err) {
+        console.error('Platform unread count error:', err);
+        res.status(500).json({ error: 'Failed to fetch unread count' });
     }
 });
 /**
@@ -743,10 +789,14 @@ router.post('/notifications', async (req, res) => {
        RETURNING *`, [String(title), String(body), link ? String(link) : null]);
         const tokens = await db_1.pool.query(`SELECT token FROM device_tokens WHERE user_type = 'superadmin'`);
         if (tokens.rows.length > 0) {
+            const unreadRes = await db_1.pool.query(`SELECT COUNT(*)::int AS c FROM notifications
+         WHERE is_read = false
+           AND (user_type = 'superadmin' OR (church_id IS NULL AND user_id IS NULL))`);
             await (0, fcm_1.sendFcmToTokens)(tokens.rows.map((r) => r.token), {
                 title: String(title),
                 body: String(body),
                 link: link ? String(link) : null,
+                badge: Number(unreadRes.rows[0]?.c) || 1,
             });
         }
         res.status(201).json(result.rows[0]);

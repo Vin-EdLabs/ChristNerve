@@ -12,6 +12,43 @@ function actor(req) {
     return { type: accountType, id: Number(req.churchUser.id) };
 }
 /**
+ * GET /api/chat/unread-total
+ */
+router.get('/unread-total', async (req, res) => {
+    try {
+        const churchId = req.churchTenant.id;
+        const me = actor(req);
+        const result = await db_1.pool.query(`SELECT COALESCE(SUM(unread), 0)::int AS count
+       FROM (
+         SELECT (
+           SELECT COUNT(*)::int FROM market_messages mm
+           WHERE mm.conversation_id = c.id
+             AND mm.is_read = false
+             AND NOT (
+               CASE
+                 WHEN c.buyer_type = $2 AND c.buyer_id = $3
+                   THEN mm.sender_type = 'buyer' AND mm.sender_id = $3
+                 WHEN c.seller_member_id = $3 AND $2 = 'member'
+                   THEN mm.sender_type = 'seller' AND mm.sender_id = $3
+                 ELSE false
+               END
+             )
+         ) AS unread
+         FROM market_conversations c
+         WHERE c.church_id = $1
+           AND (
+             (c.buyer_type = $2 AND c.buyer_id = $3)
+             OR (c.seller_member_id = $3 AND $2 = 'member')
+           )
+       ) t`, [churchId, me.type, me.id]);
+        res.json({ count: result.rows[0]?.count || 0 });
+    }
+    catch (err) {
+        console.error('Unread total error:', err);
+        res.status(500).json({ error: 'Failed to load unread count' });
+    }
+});
+/**
  * GET /api/chat/conversations
  */
 router.get('/conversations', async (req, res) => {
@@ -85,6 +122,12 @@ router.get('/conversations', async (req, res) => {
  */
 router.post('/conversations', async (req, res) => {
     try {
+        if (req.accountType !== 'member') {
+            res.status(403).json({
+                error: 'Only church members can use in-app chat. Use WhatsApp from checkout.',
+            });
+            return;
+        }
         const churchId = req.churchTenant.id;
         const me = actor(req);
         let listingId = req.body.listing_id

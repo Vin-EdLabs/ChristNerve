@@ -121,23 +121,26 @@ router.get('/fcm-config', (_req, res) => {
 router.get('/manifest', async (req, res) => {
     try {
         const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '');
-        const host = hostHeader.split(':')[0].toLowerCase();
+        const host = hostHeader.split(',')[0].trim().split(':')[0].toLowerCase();
         const parts = host.split('.').filter(Boolean);
-        let subdomain = parts.length >= 2 ? parts[0] : '';
-        const headerSlug = req.headers['x-church-slug'];
-        if ((!subdomain || subdomain === 'localhost' || subdomain === 'www') &&
-            typeof headerSlug === 'string' &&
-            headerSlug.trim()) {
-            subdomain = headerSlug.trim().toLowerCase();
+        const subdomain = parts.length >= 2 ? parts[0] : '';
+        let churchSlug = null;
+        if (subdomain.startsWith('ch-')) {
+            churchSlug = subdomain.slice(3).trim().toLowerCase() || null;
         }
-        const skip = new Set([
-            'christnerve', 'app', 'www', 'api', 'admin', 'market', 'shop', 'localhost', '127',
-        ]);
+        const headerSlug = req.headers['x-church-slug'];
+        if (!churchSlug && typeof headerSlug === 'string' && headerSlug.trim()) {
+            churchSlug = headerSlug.trim().toLowerCase();
+        }
+        const querySlug = req.query.church;
+        if (!churchSlug && typeof querySlug === 'string' && querySlug.trim()) {
+            churchSlug = querySlug.trim().toLowerCase();
+        }
         let church = null;
-        if (subdomain && !skip.has(subdomain)) {
+        if (churchSlug) {
             const result = await db_1.pool.query(`SELECT name, slug, logo_url, brand_color, short_name
          FROM church_tenants
-         WHERE slug = $1 AND is_active = true`, [subdomain]);
+         WHERE slug = $1 AND is_active = true`, [churchSlug]);
             church = result.rows[0] || null;
         }
         const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
@@ -236,9 +239,9 @@ router.get('/manifest', async (req, res) => {
 router.get('/church/:slug', async (req, res) => {
     try {
         const slug = req.params.slug.toLowerCase();
-        const churchResult = await db_1.pool.query(`SELECT id, name, slug, tagline, description, logo_url, banner_url,
+        const churchResult = await db_1.pool.query(`SELECT id, name, slug, tagline, description, logo_url, banner_url, visit_hero_url,
               address, city, region, phone, email, denomination, founded_year,
-              brand_color, secondary_color, short_name
+              brand_color, secondary_color, short_name, youtube_url, visit_welcome
        FROM church_tenants
        WHERE slug = $1 AND is_active = true`, [slug]);
         if (churchResult.rows.length === 0) {
@@ -246,13 +249,16 @@ router.get('/church/:slug', async (req, res) => {
             return;
         }
         const church = churchResult.rows[0];
-        const [events, listings, memberCount] = await Promise.all([
+        const [events, listings, memberCount, gallery] = await Promise.all([
             db_1.pool.query(`SELECT id, title, description, event_type, start_datetime, end_datetime,
                 location, banner_url
          FROM church_events
          WHERE church_id = $1 AND is_public = true AND start_datetime >= NOW()
          ORDER BY start_datetime ASC
-         LIMIT 5`, [church.id]),
+         LIMIT 5`, [church.id]).catch((err) => {
+                console.warn('Public church events skipped:', err.message);
+                return { rows: [] };
+            }),
             db_1.pool.query(`SELECT l.id, l.title, l.slug, l.price_min, l.price_max, l.price_label,
                 l.location, l.is_featured,
                 c.name AS category_name,
@@ -268,19 +274,40 @@ router.get('/church/:slug', async (req, res) => {
          JOIN church_members m ON m.id = l.member_id
          WHERE l.church_id = $1 AND l.is_active = true
          ORDER BY l.is_featured DESC, l.views_count DESC
-         LIMIT 6`, [church.id]),
+         LIMIT 6`, [church.id]).catch((err) => {
+                console.warn('Public church listings skipped:', err.message);
+                return { rows: [] };
+            }),
             db_1.pool.query(`SELECT COUNT(*)::int AS total FROM church_members
-         WHERE church_id = $1 AND membership_status = 'active'`, [church.id]),
+         WHERE church_id = $1 AND membership_status = 'active'`, [church.id]).catch(() => ({ rows: [{ total: 0 }] })),
+            db_1.pool.query(`SELECT id, image_url, caption, display_order
+         FROM church_gallery_images
+         WHERE church_id = $1
+         ORDER BY display_order ASC, id ASC
+         LIMIT 12`, [church.id]).catch((err) => {
+                console.warn('Public church gallery skipped (run migrate-member-staff-depts-visit.sql):', err.message);
+                return { rows: [] };
+            }),
         ]);
         res.json({
             church,
             upcoming_events: events.rows,
             featured_listings: listings.rows,
-            member_count: memberCount.rows[0].total,
+            member_count: memberCount.rows[0]?.total ?? 0,
+            gallery: gallery.rows,
         });
     }
     catch (err) {
         console.error('Public church error:', err);
+        const message = err instanceof Error ? err.message : '';
+        // Common production miss: columns from visit/brand migrations
+        if (/visit_hero_url|youtube_url|visit_welcome|brand_color|short_name/i.test(message)) {
+            res.status(500).json({
+                error: 'Church profile schema outdated — run database migrations on the server',
+                hint: 'node database/run-migrations.js',
+            });
+            return;
+        }
         res.status(500).json({ error: 'Failed to fetch church profile' });
     }
 });

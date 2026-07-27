@@ -1,17 +1,71 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const db_1 = require("../db");
 const churchAuth_1 = require("../middleware/churchAuth");
 const churchTenant_1 = require("../middleware/churchTenant");
+const upload_1 = require("../middleware/upload");
 const slug_1 = require("../utils/slug");
 const audit_1 = require("../services/audit");
+const memberPin_1 = require("../utils/memberPin");
 const router = (0, express_1.Router)();
 router.use(churchTenant_1.requireChurchTenant, churchAuth_1.requireChurchAuth);
+/** Empty form strings → null for PG date/text columns. */
+function nullIfEmpty(value) {
+    if (value === undefined || value === null)
+        return null;
+    const s = String(value).trim();
+    return s === '' ? null : s;
+}
+function pickDate(bodyVal, currentVal, provided) {
+    if (!provided) {
+        return currentVal === undefined || currentVal === null || currentVal === ''
+            ? null
+            : String(currentVal).slice(0, 10);
+    }
+    return nullIfEmpty(bodyVal);
+}
+/** Sync multi-department membership; also refresh free-text `department` label. */
+async function syncMemberDepartments(churchId, memberId, departmentIds) {
+    if (!Array.isArray(departmentIds))
+        return;
+    const ids = [
+        ...new Set(departmentIds
+            .map((x) => parseInt(String(x), 10))
+            .filter((n) => !Number.isNaN(n) && n > 0)),
+    ];
+    await db_1.pool.query(`DELETE FROM church_department_members
+     WHERE church_id = $1 AND member_id = $2`, [churchId, memberId]);
+    for (const deptId of ids) {
+        const ok = await db_1.pool.query(`SELECT id FROM church_departments WHERE id = $1 AND church_id = $2`, [deptId, churchId]);
+        if (ok.rows.length === 0)
+            continue;
+        await db_1.pool.query(`INSERT INTO church_department_members (church_id, department_id, member_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (department_id, member_id) DO NOTHING`, [churchId, deptId, memberId]);
+    }
+    // Promote leaders already set on department
+    await db_1.pool.query(`UPDATE church_department_members dm
+     SET role = 'leader'
+     FROM church_departments d
+     WHERE d.id = dm.department_id
+       AND d.leader_member_id = dm.member_id
+       AND dm.member_id = $1`, [memberId]);
+    const names = await db_1.pool.query(`SELECT d.name
+     FROM church_department_members dm
+     JOIN church_departments d ON d.id = dm.department_id
+     WHERE dm.member_id = $1
+     ORDER BY d.name`, [memberId]);
+    const label = names.rows.map((r) => r.name).join(', ') || null;
+    await db_1.pool.query(`UPDATE church_members SET department = $1, updated_at = NOW() WHERE id = $2`, [label, memberId]);
+}
+async function attachDepartmentIds(member) {
+    const r = await db_1.pool.query(`SELECT department_id FROM church_department_members WHERE member_id = $1`, [member.id]);
+    return {
+        ...member,
+        department_ids: r.rows.map((row) => row.department_id),
+    };
+}
 async function nextMemberNumber(churchId, slug) {
     const prefix = slug.toUpperCase();
     const result = await db_1.pool.query(`SELECT member_number FROM church_members
@@ -127,11 +181,20 @@ router.post('/', async (req, res) => {
     try {
         const churchId = req.churchTenant.id;
         const slug = req.churchTenant.slug;
-        const { first_name, last_name, other_names, email, phone, whatsapp, gender, date_of_birth, marital_status, occupation, address, city, avatar_url, department, ministry, cell_group, membership_status, membership_date, baptism_date, } = req.body;
+        const { first_name, last_name, other_names, email, phone, whatsapp, gender, date_of_birth, marital_status, occupation, address, city, avatar_url, department, department_ids, ministry, cell_group, membership_status, membership_date, baptism_date, } = req.body;
         if (!first_name || !last_name) {
             res.status(400).json({ error: 'first_name and last_name are required' });
             return;
         }
+        if (!phone || !(0, memberPin_1.isValidMemberPhone)(phone)) {
+            res.status(400).json({
+                error: 'Phone is required and must start with 0 (e.g. 0244123456)',
+            });
+            return;
+        }
+        const normalizedPhone = (0, memberPin_1.normalizePhone)(phone);
+        const defaultPin = (0, memberPin_1.defaultPinFromPhone)(normalizedPhone);
+        const pinHash = await (0, memberPin_1.hashPin)(defaultPin);
         const memberNumber = await nextMemberNumber(churchId, slug);
         const marketplaceSlug = await uniqueMarketplaceSlug((0, slug_1.generateSlug)(`${first_name} ${last_name}`));
         const result = await db_1.pool.query(`INSERT INTO church_members (
@@ -139,36 +202,50 @@ router.post('/', async (req, res) => {
          email, phone, whatsapp, gender, date_of_birth, marital_status,
          occupation, address, city, avatar_url, department, ministry,
          cell_group, membership_status, membership_date, baptism_date,
-         marketplace_slug, member_role, credentials_set
+         marketplace_slug, member_role, credentials_set, password_hash
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-         COALESCE($19, 'active'), $20, $21, $22, 'member', false
+         COALESCE($19, 'active'), $20, $21, $22, 'member', true, $23
        )
        RETURNING *`, [
             churchId,
             memberNumber,
             first_name,
             last_name,
-            other_names || null,
-            email || null,
-            phone || null,
-            whatsapp || null,
-            gender || null,
-            date_of_birth || null,
-            marital_status || null,
-            occupation || null,
-            address || null,
-            city || null,
-            avatar_url || null,
-            department || null,
-            ministry || null,
-            cell_group || null,
-            membership_status || null,
-            membership_date || null,
-            baptism_date || null,
+            nullIfEmpty(other_names),
+            nullIfEmpty(email),
+            normalizedPhone,
+            whatsapp
+                ? (0, memberPin_1.normalizePhone)(whatsapp) || whatsapp
+                : normalizedPhone,
+            nullIfEmpty(gender),
+            nullIfEmpty(date_of_birth),
+            nullIfEmpty(marital_status),
+            nullIfEmpty(occupation),
+            nullIfEmpty(address),
+            nullIfEmpty(city),
+            nullIfEmpty(avatar_url),
+            nullIfEmpty(department),
+            nullIfEmpty(ministry),
+            nullIfEmpty(cell_group),
+            nullIfEmpty(membership_status) || 'active',
+            nullIfEmpty(membership_date),
+            nullIfEmpty(baptism_date),
             marketplaceSlug,
+            pinHash,
         ]);
         const member = result.rows[0];
+        if (Array.isArray(department_ids) && department_ids.length > 0) {
+            await syncMemberDepartments(churchId, member.id, department_ids);
+        }
+        else if (department) {
+            const named = await db_1.pool.query(`SELECT id FROM church_departments
+         WHERE church_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2))
+         LIMIT 1`, [churchId, department]);
+            if (named.rows[0]) {
+                await syncMemberDepartments(churchId, member.id, [named.rows[0].id]);
+            }
+        }
         const actor = req.churchUser;
         await (0, audit_1.writeAudit)({
             churchId,
@@ -180,9 +257,14 @@ router.post('/', async (req, res) => {
             action: 'member.create',
             entityType: 'church_member',
             entityId: member.id,
-            summary: `Added member ${member.first_name} ${member.last_name}`,
+            summary: `Added member ${member.first_name} ${member.last_name} (login phone ${normalizedPhone})`,
         });
-        res.status(201).json(member);
+        const refreshed = await db_1.pool.query('SELECT * FROM church_members WHERE id = $1', [member.id]);
+        const { password_hash: _, ...safe } = refreshed.rows[0];
+        res.status(201).json({
+            ...(await attachDepartmentIds(safe)),
+            default_pin_hint: 'Last 4 digits of phone',
+        });
     }
     catch (err) {
         console.error('Create member error:', err);
@@ -210,7 +292,8 @@ router.get('/:id', async (req, res) => {
             res.status(404).json({ error: 'Member not found' });
             return;
         }
-        res.json(result.rows[0]);
+        const { password_hash: _, ...safe } = result.rows[0];
+        res.json(await attachDepartmentIds(safe));
     }
     catch (err) {
         console.error('Get member error:', err);
@@ -218,10 +301,18 @@ router.get('/:id', async (req, res) => {
     }
 });
 /**
- * PUT /api/members/:id/credentials
- * Staff (pastor/admin) set member username + password for login.
+ * PUT /api/members/:id/credentials  (legacy alias)
+ * PUT /api/members/:id/reset-pin
+ * Staff reset member PIN. Default = last 4 digits of phone.
+ * Optional body: { pin: "1234" }
  */
 router.put('/:id/credentials', async (req, res) => {
+    return resetMemberPin(req, res);
+});
+router.put('/:id/reset-pin', async (req, res) => {
+    return resetMemberPin(req, res);
+});
+async function resetMemberPin(req, res) {
     try {
         if (req.accountType === 'member') {
             res.status(403).json({ error: 'Staff only' });
@@ -229,7 +320,7 @@ router.put('/:id/credentials', async (req, res) => {
         }
         const role = String(req.churchUser?.role || '').toLowerCase();
         if (!['pastor', 'admin', 'secretary'].includes(role)) {
-            res.status(403).json({ error: 'Not allowed to manage member logins' });
+            res.status(403).json({ error: 'Not allowed to reset member PINs' });
             return;
         }
         const churchId = req.churchTenant.id;
@@ -238,44 +329,37 @@ router.put('/:id/credentials', async (req, res) => {
             res.status(400).json({ error: 'Invalid member id' });
             return;
         }
-        const username = String(req.body.username || '')
-            .trim()
-            .toLowerCase();
-        const password = String(req.body.password || '');
-        if (!username || username.length < 3) {
-            res.status(400).json({ error: 'Username must be at least 3 characters' });
-            return;
-        }
-        if (!/^[a-z0-9._-]+$/.test(username)) {
-            res.status(400).json({
-                error: 'Username may only use letters, numbers, dots, underscores, hyphens',
-            });
-            return;
-        }
-        if (!password || password.length < 6) {
-            res.status(400).json({ error: 'Password must be at least 6 characters' });
-            return;
-        }
-        const existing = await db_1.pool.query('SELECT id FROM church_members WHERE id = $1 AND church_id = $2', [id, churchId]);
+        const existing = await db_1.pool.query('SELECT * FROM church_members WHERE id = $1 AND church_id = $2', [id, churchId]);
         if (existing.rows.length === 0) {
             res.status(404).json({ error: 'Member not found' });
             return;
         }
-        const taken = await db_1.pool.query(`SELECT id FROM church_members
-       WHERE church_id = $1 AND LOWER(username) = $2 AND id <> $3`, [churchId, username, id]);
-        if (taken.rows.length > 0) {
-            res.status(409).json({ error: 'That username is already taken' });
+        const member = existing.rows[0];
+        let phone = (0, memberPin_1.normalizePhone)(member.phone || '');
+        if (!(0, memberPin_1.isValidMemberPhone)(phone)) {
+            res.status(400).json({
+                error: 'Member needs a valid phone starting with 0 before PIN can be set',
+            });
             return;
         }
-        const hash = await bcryptjs_1.default.hash(password, 10);
+        const requested = String(req.body.pin || req.body.password || '').trim();
+        const pin = (0, memberPin_1.isValidPin)(requested)
+            ? requested
+            : (0, memberPin_1.defaultPinFromPhone)(phone);
+        if (!(0, memberPin_1.isValidPin)(pin)) {
+            res.status(400).json({ error: 'PIN must be exactly 4 digits' });
+            return;
+        }
+        const hash = await (0, memberPin_1.hashPin)(pin);
         const result = await db_1.pool.query(`UPDATE church_members
-       SET username = $1,
+       SET phone = $1,
            password_hash = $2,
-           credentials_set = true
+           credentials_set = true,
+           updated_at = NOW()
        WHERE id = $3 AND church_id = $4
        RETURNING id, first_name, last_name, email, phone, username,
-                 credentials_set, membership_status, member_role`, [username, hash, id, churchId]);
-        const member = result.rows[0];
+                 credentials_set, membership_status, member_role`, [phone, hash, id, churchId]);
+        const updated = result.rows[0];
         const actor = req.churchUser;
         await (0, audit_1.writeAudit)({
             churchId,
@@ -284,23 +368,22 @@ router.put('/:id/credentials', async (req, res) => {
             actorName: actor
                 ? `${actor.first_name || ''} ${actor.last_name || ''}`.trim()
                 : null,
-            action: 'member.credentials',
+            action: 'member.reset_pin',
             entityType: 'church_member',
-            entityId: member.id,
-            summary: `Set login for ${member.first_name} ${member.last_name} (@${member.username})`,
+            entityId: updated.id,
+            summary: `Reset PIN for ${updated.first_name} ${updated.last_name}`,
         });
-        res.json({ ok: true, member });
+        res.json({
+            ok: true,
+            member: updated,
+            pin_reset_to: (0, memberPin_1.isValidPin)(requested) ? 'custom' : 'last_4_of_phone',
+        });
     }
     catch (err) {
-        console.error('Set member credentials error:', err);
-        const pgErr = err;
-        if (pgErr.code === '23505') {
-            res.status(409).json({ error: 'That username is already taken' });
-            return;
-        }
-        res.status(500).json({ error: 'Failed to set member credentials' });
+        console.error('Reset member PIN error:', err);
+        res.status(500).json({ error: 'Failed to reset PIN' });
     }
-});
+}
 /**
  * PUT /api/members/:id
  */
@@ -352,32 +435,55 @@ router.put('/:id', async (req, res) => {
        RETURNING *`, [
             first_name,
             last_name,
-            body.other_names !== undefined ? body.other_names : current.other_names,
-            body.email !== undefined ? body.email : current.email,
-            body.phone !== undefined ? body.phone : current.phone,
-            body.whatsapp !== undefined ? body.whatsapp : current.whatsapp,
-            body.gender !== undefined ? body.gender : current.gender,
-            body.date_of_birth !== undefined ? body.date_of_birth : current.date_of_birth,
-            body.marital_status !== undefined ? body.marital_status : current.marital_status,
-            body.occupation !== undefined ? body.occupation : current.occupation,
-            body.address !== undefined ? body.address : current.address,
-            body.city !== undefined ? body.city : current.city,
-            body.avatar_url !== undefined ? body.avatar_url : current.avatar_url,
-            body.department !== undefined ? body.department : current.department,
-            body.ministry !== undefined ? body.ministry : current.ministry,
-            body.cell_group !== undefined ? body.cell_group : current.cell_group,
+            body.other_names !== undefined
+                ? nullIfEmpty(body.other_names)
+                : current.other_names,
+            body.email !== undefined ? nullIfEmpty(body.email) : current.email,
+            body.phone !== undefined
+                ? (0, memberPin_1.normalizePhone)(body.phone) || body.phone
+                : current.phone,
+            body.whatsapp !== undefined
+                ? body.whatsapp
+                    ? (0, memberPin_1.normalizePhone)(body.whatsapp) || body.whatsapp
+                    : null
+                : current.whatsapp,
+            body.gender !== undefined ? nullIfEmpty(body.gender) : current.gender,
+            pickDate(body.date_of_birth, current.date_of_birth, body.date_of_birth !== undefined),
+            body.marital_status !== undefined
+                ? nullIfEmpty(body.marital_status)
+                : current.marital_status,
+            body.occupation !== undefined
+                ? nullIfEmpty(body.occupation)
+                : current.occupation,
+            body.address !== undefined ? nullIfEmpty(body.address) : current.address,
+            body.city !== undefined ? nullIfEmpty(body.city) : current.city,
+            body.avatar_url !== undefined
+                ? nullIfEmpty(body.avatar_url)
+                : current.avatar_url,
+            body.department !== undefined
+                ? nullIfEmpty(body.department)
+                : current.department,
+            body.ministry !== undefined
+                ? nullIfEmpty(body.ministry)
+                : current.ministry,
+            body.cell_group !== undefined
+                ? nullIfEmpty(body.cell_group)
+                : current.cell_group,
             body.membership_status !== undefined
-                ? body.membership_status
+                ? nullIfEmpty(body.membership_status) || current.membership_status
                 : current.membership_status,
-            body.membership_date !== undefined
-                ? body.membership_date
-                : current.membership_date,
-            body.baptism_date !== undefined ? body.baptism_date : current.baptism_date,
+            pickDate(body.membership_date, current.membership_date, body.membership_date !== undefined),
+            pickDate(body.baptism_date, current.baptism_date, body.baptism_date !== undefined),
             marketplace_slug,
             id,
             churchId,
         ]);
-        res.json(result.rows[0]);
+        if (Array.isArray(body.department_ids)) {
+            await syncMemberDepartments(churchId, id, body.department_ids);
+        }
+        const refreshed = await db_1.pool.query('SELECT * FROM church_members WHERE id = $1', [id]);
+        const { password_hash: _, ...safe } = refreshed.rows[0] || result.rows[0];
+        res.json(await attachDepartmentIds(safe));
     }
     catch (err) {
         console.error('Update member error:', err);
@@ -387,6 +493,43 @@ router.put('/:id', async (req, res) => {
             return;
         }
         res.status(500).json({ error: 'Failed to update member' });
+    }
+});
+/**
+ * POST /api/members/:id/avatar — staff upload member profile photo
+ */
+router.post('/:id/avatar', upload_1.upload.single('avatar'), async (req, res) => {
+    try {
+        if (req.accountType === 'member') {
+            res.status(403).json({ error: 'Staff only' });
+            return;
+        }
+        const churchId = req.churchTenant.id;
+        const id = parseInt(req.params.id, 10);
+        if (Number.isNaN(id)) {
+            res.status(400).json({ error: 'Invalid member id' });
+            return;
+        }
+        const avatarUrl = (0, upload_1.uploadedFilePublicUrl)(req.file);
+        if (!avatarUrl) {
+            res.status(400).json({
+                error: 'Profile photo is required (JPEG, PNG, or WebP)',
+            });
+            return;
+        }
+        const result = await db_1.pool.query(`UPDATE church_members
+         SET avatar_url = $1, updated_at = NOW()
+         WHERE id = $2 AND church_id = $3
+         RETURNING *`, [avatarUrl, id, churchId]);
+        if (result.rows.length === 0) {
+            res.status(404).json({ error: 'Member not found' });
+            return;
+        }
+        res.json(result.rows[0]);
+    }
+    catch (err) {
+        console.error('Member avatar upload error:', err);
+        res.status(500).json({ error: 'Failed to upload profile photo' });
     }
 });
 /**

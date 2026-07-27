@@ -2,37 +2,56 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireChurchTenant = exports.resolveChurchTenant = void 0;
 const db_1 = require("../db");
-const PLATFORM_SUBDOMAINS = new Set([
-    'christnerve',
-    'app',
-    'www',
-    'api',
-    'localhost',
-]);
-function slugFromHost(hostHeader) {
-    const host = hostHeader.split(':')[0].toLowerCase();
-    if (!host || host === 'localhost' || host === '127.0.0.1')
+function normalizeSlug(value) {
+    if (!value)
         return null;
-    const parts = host.split('.').filter(Boolean);
-    if (parts.length < 2)
-        return null;
-    const sub = parts[0];
-    if (PLATFORM_SUBDOMAINS.has(sub))
-        return null;
-    return sub;
+    const slug = String(value).trim().toLowerCase();
+    return slug || null;
+}
+/**
+ * Resolve church slug from:
+ * 1) Production host ch-{slug}.scholarnerve.com
+ * 2) ?church= query (localhost / tools)
+ * 3) X-Church-Slug header (SPA → API)
+ */
+function resolveSlug(req) {
+    const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+    const host = hostHeader.split(',')[0].trim().split(':')[0].toLowerCase();
+    const subdomain = host.split('.')[0] || '';
+    const skip = new Set([
+        'christnerve',
+        'app',
+        'www',
+        'api',
+        'admin',
+        'localhost',
+        '127',
+    ]);
+    // Production — ch-pka.scholarnerve.com
+    if (!skip.has(subdomain) && subdomain.startsWith('ch-')) {
+        return normalizeSlug(subdomain.slice(3));
+    }
+    // Localhost / tools — ?church=pka
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+        const fromQuery = normalizeSlug(req.query.church);
+        if (fromQuery)
+            return fromQuery;
+    }
+    // SPA always sends this when a church is active
+    const headerSlug = req.headers['x-church-slug'];
+    if (typeof headerSlug === 'string') {
+        return normalizeSlug(headerSlug);
+    }
+    return null;
 }
 const resolveChurchTenant = async (req, res, next) => {
     try {
-        let slug = slugFromHost(req.headers.host || '');
-        const headerSlug = req.headers['x-church-slug'];
-        if (!slug && typeof headerSlug === 'string' && headerSlug.trim()) {
-            slug = headerSlug.trim().toLowerCase();
-        }
-        if (!slug) {
+        const churchSlug = resolveSlug(req);
+        if (!churchSlug) {
             next();
             return;
         }
-        const result = await db_1.pool.query('SELECT * FROM church_tenants WHERE slug = $1 AND is_active = true', [slug]);
+        const result = await db_1.pool.query('SELECT * FROM church_tenants WHERE slug = $1 AND is_active = true', [churchSlug]);
         if (result.rows.length === 0) {
             res.status(404).json({ error: 'Church not found' });
             return;
@@ -48,7 +67,7 @@ exports.resolveChurchTenant = resolveChurchTenant;
 const requireChurchTenant = (req, res, next) => {
     if (!req.churchTenant) {
         res.status(400).json({
-            error: 'Church tenant required. Use a church subdomain (e.g. pka.localhost) or X-Church-Slug header.',
+            error: 'Church tenant required. Use ch-{slug}.scholarnerve.com, ?church=slug on localhost, or X-Church-Slug header.',
         });
         return;
     }

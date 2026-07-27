@@ -156,17 +156,37 @@ router.put('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
     try {
+        const role = String(req.churchUser?.role || '').toLowerCase();
+        if (req.accountType === 'member') {
+            res.status(403).json({ error: 'Members cannot delete events' });
+            return;
+        }
+        if (!['pastor', 'admin', 'super-admin'].includes(role)) {
+            res.status(403).json({ error: 'Only pastors and admins can delete events' });
+            return;
+        }
         const churchId = req.churchTenant.id;
         const id = parseInt(req.params.id, 10);
         if (Number.isNaN(id)) {
             res.status(400).json({ error: 'Invalid event id' });
             return;
         }
-        const result = await db_1.pool.query('DELETE FROM church_events WHERE id = $1 AND church_id = $2 RETURNING id', [id, churchId]);
-        if (result.rows.length === 0) {
+        const existing = await db_1.pool.query('SELECT id, title FROM church_events WHERE id = $1 AND church_id = $2', [id, churchId]);
+        if (existing.rows.length === 0) {
             res.status(404).json({ error: 'Event not found' });
             return;
         }
+        await db_1.pool.query('DELETE FROM church_events WHERE id = $1 AND church_id = $2', [id, churchId]);
+        await (0, audit_1.writeAudit)({
+            churchId,
+            actorType: 'staff',
+            actorId: req.churchUser.id,
+            actorName: `${req.churchUser.first_name} ${req.churchUser.last_name}`.trim(),
+            action: 'event.delete',
+            summary: `Deleted event “${existing.rows[0].title}”`,
+            entityType: 'church_events',
+            entityId: id,
+        });
         res.json({ message: 'Event deleted', id });
     }
     catch (err) {

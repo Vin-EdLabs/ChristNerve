@@ -6,6 +6,7 @@ const churchAuth_1 = require("../middleware/churchAuth");
 const churchTenant_1 = require("../middleware/churchTenant");
 const upload_1 = require("../middleware/upload");
 const slug_1 = require("../utils/slug");
+const notifications_1 = require("./notifications");
 const router = (0, express_1.Router)();
 async function uniqueListingSlug(base, memberId) {
     let candidate = `${base}-${memberId}`;
@@ -147,6 +148,9 @@ router.get('/listings/:slug', async (req, res) => {
          WHERE r.listing_id = $1
          ORDER BY r.created_at DESC`, [listing.id]),
             db_1.pool.query(`SELECT l.id, l.title, l.slug, l.price_min, l.price_max, l.price_label, l.location,
+                l.is_featured, l.member_id, l.whatsapp, l.phone,
+                c.name AS category_name, c.slug AS category_slug,
+                m.first_name, m.last_name, m.is_verified, m.marketplace_slug,
                 (
                   SELECT image_url FROM market_listing_images i
                   WHERE i.listing_id = l.id
@@ -154,9 +158,11 @@ router.get('/listings/:slug', async (req, res) => {
                   LIMIT 1
                 ) AS primary_image
          FROM market_listings l
+         LEFT JOIN market_categories c ON c.id = l.category_id
+         LEFT JOIN church_members m ON m.id = l.member_id
          WHERE l.member_id = $1 AND l.id <> $2 AND l.is_active = true
-         ORDER BY l.created_at DESC
-         LIMIT 6`, [listing.member_id, listing.id]),
+         ORDER BY l.is_featured DESC, l.created_at DESC
+         LIMIT 12`, [listing.member_id, listing.id]),
         ]);
         res.json({
             ...listing,
@@ -375,7 +381,23 @@ router.post('/listings', churchTenant_1.requireChurchTenant, churchAuth_1.requir
             is_featured !== undefined ? is_featured : null,
             slug,
         ]);
-        res.status(201).json(result.rows[0]);
+        const listing = result.rows[0];
+        try {
+            const seller = await db_1.pool.query(`SELECT first_name, last_name FROM church_members WHERE id = $1`, [listingMemberId]);
+            const name = seller.rows[0]
+                ? `${seller.rows[0].first_name} ${seller.rows[0].last_name}`.trim()
+                : 'A member';
+            await (0, notifications_1.notifyChurchBroadcast)({
+                churchId,
+                title: 'New marketplace listing',
+                body: `${name} posted “${title}” — check it out in the market.`,
+                link: `/market/listing/${listing.slug || listing.id}`,
+            });
+        }
+        catch (notifyErr) {
+            console.warn('Listing notify failed:', notifyErr);
+        }
+        res.status(201).json(listing);
     }
     catch (err) {
         console.error('Create listing error:', err);

@@ -6,6 +6,8 @@ export interface FcmPayload {
     title: string;
     body: string;
     link?: string | null;
+    /** Unread count for home-screen / dock badge */
+    badge?: number | null;
     data?: Record<string, string>;
 }
 export declare function isFcmConfigured(): boolean;

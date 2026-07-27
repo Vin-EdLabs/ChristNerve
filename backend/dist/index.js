@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -7,7 +30,6 @@ exports.io = void 0;
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const fs_1 = __importDefault(require("fs"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const http_1 = require("http");
@@ -29,41 +51,34 @@ const notifications_1 = __importDefault(require("./routes/notifications"));
 const chat_1 = __importDefault(require("./routes/chat"));
 const users_1 = __importDefault(require("./routes/users"));
 const audit_1 = __importDefault(require("./routes/audit"));
+const churchPage_1 = __importStar(require("./routes/churchPage"));
+const dashboard_1 = __importDefault(require("./routes/dashboard"));
+const pastoral_1 = __importDefault(require("./routes/pastoral"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
 const isProd = process.env.NODE_ENV === 'production';
-const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-/** Production: only scholarnerve.com hosts. Dev: also localhost. */
-const allowedOriginPattern = /^https:\/\/([a-z0-9-]+\.)?scholarnerve\.com$/i;
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+/** Localhost (any port) + christnerve / ch-* production hosts */
+const productionOriginPattern = /^https:\/\/(christnerve|ch-[a-z0-9-]+)\.scholarnerve\.com$/i;
 function isAllowedOrigin(origin) {
     if (!origin)
         return true;
     if (origin === frontendUrl)
         return true;
-    if (allowedOriginPattern.test(origin))
+    const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+    const isProduction = productionOriginPattern.test(origin);
+    if (isLocalhost || isProduction)
         return true;
-    if (!isProd) {
-        try {
-            const url = new URL(origin);
-            const host = url.hostname.toLowerCase();
-            if (host === 'localhost' || host === '127.0.0.1')
-                return true;
-            if (host.endsWith('.localhost'))
-                return true;
-        }
-        catch {
-            return false;
-        }
-    }
     return false;
 }
-// Behind Nginx / Cloudflare
 app.set('trust proxy', 1);
 app.use((0, helmet_1.default)({
-    // SPA + API on same host; allow Vite assets / inline where needed
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    // Allow <img> / font loads from the Vite origin (5174) and tenant hosts
+    // when media is served from the API origin (5001) or a separate uploads host.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 exports.io = new socket_io_1.Server(httpServer, {
     cors: {
@@ -112,18 +127,8 @@ app.get('/api/health', (_req, res) => {
         timestamp: new Date().toISOString(),
     });
 });
-const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        error: 'Too many login attempts. Try again in 15 minutes.',
-    },
-});
-// Multi-tenant resolution (subdomain or X-Church-Slug)
 app.use(churchTenant_1.resolveChurchTenant);
-app.use('/api/auth', authLimiter, auth_1.default);
+app.use('/api/auth', auth_1.default);
 app.use('/api/members', members_1.default);
 app.use('/api/attendance', attendance_1.default);
 app.use('/api/finance', finance_1.default);
@@ -137,11 +142,13 @@ app.use('/api/superadmin', superadmin_1.default);
 app.use('/api/users', users_1.default);
 app.use('/api/audit', audit_1.default);
 app.use('/api/notifications', notifications_1.default);
-// 404 for unknown API routes
+app.use('/api/church-page', churchPage_1.default);
+app.use('/api/dashboard', dashboard_1.default);
+app.use('/api/pastoral', pastoral_1.default);
+app.post('/api/public/church/:slug/join', churchPage_1.publicJoinHandler);
 app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });
 });
-// Error handler
 app.use((err, _req, res, _next) => {
     console.error(err.stack || err.message);
     if (err.message?.includes('Only JPEG') || err.message === 'Not allowed by CORS') {
