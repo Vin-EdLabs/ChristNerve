@@ -61,7 +61,42 @@ Cloudflare DNS:
 
 Church hosts look like `ch-pka.scholarnerve.com` — ScholarNerve’s other hosts are untouched.
 
-### Push notifications (required for production)
+### Database migrations (fixes 500 on /api/public/church/pka)
+
+If marketplace / visit page returns **500**, the server DB is missing newer columns/tables
+(`visit_hero_url`, `youtube_url`, `church_gallery_images`, etc.).
+
+On the VPS (from the ChristNerve repo root):
+
+```bash
+cd /var/www/christnerve   # or your clone path
+cd backend && npm install  # needs pg for the node runner
+
+# Apply all migrations (safe to re-run)
+node ../database/run-migrations.js
+
+# Also load demo members + ~20 market listings for PKA:
+SEED_DEMO=1 node ../database/run-migrations.js
+
+# Restart API
+pm2 restart christnerve-api --update-env
+```
+
+Then verify:
+
+```bash
+curl -sS https://ch-pka.scholarnerve.com/api/public/church/pka | head
+# should return JSON with church + featured_listings (not 500)
+```
+
+Or with psql:
+
+```bash
+psql "$DATABASE_URL" -f database/migrate-visit-join.sql
+psql "$DATABASE_URL" -f database/migrate-member-staff-depts-visit.sql
+psql "$DATABASE_URL" -f database/migrate-demo-market-20.sql
+```
+
 
 Firebase Console → Project **christnerve** → Project settings → Cloud Messaging:
 

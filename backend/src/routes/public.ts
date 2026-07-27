@@ -304,7 +304,10 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
          ORDER BY start_datetime ASC
          LIMIT 5`,
         [church.id]
-      ),
+      ).catch((err) => {
+        console.warn('Public church events skipped:', err.message);
+        return { rows: [] as unknown[] };
+      }),
       pool.query(
         `SELECT l.id, l.title, l.slug, l.price_min, l.price_max, l.price_label,
                 l.location, l.is_featured,
@@ -323,12 +326,15 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
          ORDER BY l.is_featured DESC, l.views_count DESC
          LIMIT 6`,
         [church.id]
-      ),
+      ).catch((err) => {
+        console.warn('Public church listings skipped:', err.message);
+        return { rows: [] as unknown[] };
+      }),
       pool.query(
         `SELECT COUNT(*)::int AS total FROM church_members
          WHERE church_id = $1 AND membership_status = 'active'`,
         [church.id]
-      ),
+      ).catch(() => ({ rows: [{ total: 0 }] })),
       pool.query(
         `SELECT id, image_url, caption, display_order
          FROM church_gallery_images
@@ -336,18 +342,30 @@ router.get('/church/:slug', async (req: Request, res: Response) => {
          ORDER BY display_order ASC, id ASC
          LIMIT 12`,
         [church.id]
-      ),
+      ).catch((err) => {
+        console.warn('Public church gallery skipped (run migrate-member-staff-depts-visit.sql):', err.message);
+        return { rows: [] as unknown[] };
+      }),
     ]);
 
     res.json({
       church,
       upcoming_events: events.rows,
       featured_listings: listings.rows,
-      member_count: memberCount.rows[0].total,
+      member_count: (memberCount.rows[0] as { total?: number })?.total ?? 0,
       gallery: gallery.rows,
     });
   } catch (err) {
     console.error('Public church error:', err);
+    const message = err instanceof Error ? err.message : '';
+    // Common production miss: columns from visit/brand migrations
+    if (/visit_hero_url|youtube_url|visit_welcome|brand_color|short_name/i.test(message)) {
+      res.status(500).json({
+        error: 'Church profile schema outdated — run database migrations on the server',
+        hint: 'node database/run-migrations.js',
+      });
+      return;
+    }
     res.status(500).json({ error: 'Failed to fetch church profile' });
   }
 });

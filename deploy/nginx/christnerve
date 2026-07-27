@@ -43,13 +43,16 @@ server {
         proxy_pass http://christnerve_api;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
-        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_next_upstream error timeout http_502 http_503;
     }
 
     location = /health {
@@ -97,7 +100,8 @@ server {
     listen [::]:443 ssl http2;
     server_name ~^ch-.+\.scholarnerve\.com$;
 
-    # Prefer shared wildcard cert if available; else point to christnerve cert
+    # Wildcard cert preferred. If missing, server-repair.sh / deploy.sh
+    # rewrites these paths to christnerve.scholarnerve.com cert.
     ssl_certificate     /etc/letsencrypt/live/scholarnerve.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/scholarnerve.com/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
@@ -118,14 +122,16 @@ server {
         proxy_pass http://christnerve_api;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        # Critical — backend resolves tenant from Host (ch-{slug})
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
-        proxy_cache_bypass $http_upgrade;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_next_upstream error timeout http_502 http_503;
     }
 
     location = /health {
