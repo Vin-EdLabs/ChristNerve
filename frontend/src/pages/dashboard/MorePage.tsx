@@ -20,6 +20,13 @@ import {
   UsersRound,
   Wallet,
   Church,
+  Video,
+  Radio,
+  BookOpen,
+  Newspaper,
+  MessagesSquare,
+  ClipboardList,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -33,6 +40,14 @@ type LinkItem = {
 };
 
 const STAFF_LINKS: LinkItem[] = [
+  { to: '/sermons', label: 'Sermons', icon: Video, desc: 'YouTube messages library' },
+  { to: '/live', label: 'Live Stream', icon: Radio, desc: 'Go live for members' },
+  { to: '/devotionals', label: 'Devotionals', icon: BookOpen, desc: 'Daily word schedule' },
+  { to: '/bulletin', label: 'Bulletin', icon: Newspaper, desc: 'Sunday order of service' },
+  { to: '/feed', label: 'Church Feed', icon: MessagesSquare, desc: 'Posts & reactions' },
+  { to: '/sunday-report', label: 'Sunday Report', icon: ClipboardList, desc: 'Share to WhatsApp' },
+  { to: '/growth', label: 'Growth', icon: TrendingUp, desc: 'Membership & giving trends' },
+  { to: '/whatsapp-actions', label: 'WhatsApp Actions', icon: MessageCircle, desc: 'Quick pastoral messages' },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck, desc: 'Record services' },
   { to: '/cell-groups', label: 'Cell Groups', icon: UsersRound, desc: 'Small groups' },
   { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart, desc: 'Pastoral prayer list' },
@@ -50,10 +65,16 @@ const STAFF_LINKS: LinkItem[] = [
 
 const MEMBER_LINKS: LinkItem[] = [
   { to: '/', label: 'Home', icon: Home, desc: 'Your church home' },
+  { to: '/sermons', label: 'Sermons', icon: Video, desc: 'Watch messages' },
+  { to: '/live', label: 'Live Stream', icon: Radio, desc: 'Join when live' },
+  { to: '/devotionals', label: 'Devotionals', icon: BookOpen, desc: 'Today’s word' },
+  { to: '/bulletin', label: 'Bulletin', icon: Newspaper, desc: 'Order of service' },
+  { to: '/feed', label: 'Church Feed', icon: MessagesSquare, desc: 'Amen, Love, Fire' },
   { to: '/my-department', label: 'My Department', icon: Network, desc: 'Team, roster & meetings' },
   { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart, desc: 'Send prayer to pastors' },
   { to: '/welfare', label: 'Welfare', icon: HeartHandshake, desc: 'Request practical care' },
   { to: '/announcements', label: 'Announcements', icon: Megaphone, desc: 'Church notices' },
+  { to: '/whatsapp-actions', label: 'WhatsApp', icon: MessageCircle, desc: 'Quick wish templates' },
   { to: '/market', label: 'Marketplace', icon: Store, desc: 'Browse member shops' },
   { to: '/market/my-listings', label: 'My shop', icon: Store, desc: 'Your listings & orders' },
   { to: '/market/chat', label: 'Messages', icon: MessageCircle, desc: 'Buyer & seller chats' },

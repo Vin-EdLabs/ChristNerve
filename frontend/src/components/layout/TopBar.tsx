@@ -19,6 +19,10 @@ import {
   Users,
   Wallet,
   Church,
+  Video,
+  Radio,
+  Newspaper,
+  MessagesSquare,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -37,6 +41,9 @@ type NavLinkItem = {
 
 const STAFF_MENU: NavLinkItem[] = [
   { to: '/members', label: 'Members', icon: Users },
+  { to: '/sermons', label: 'Sermons', icon: Video },
+  { to: '/live', label: 'Live', icon: Radio },
+  { to: '/feed', label: 'Feed', icon: MessagesSquare },
   { to: '/users', label: 'Users', icon: UserCog },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
   { to: '/finance', label: 'Finance', icon: Wallet },
@@ -50,6 +57,10 @@ const STAFF_MENU: NavLinkItem[] = [
 ];
 
 const MEMBER_MENU: NavLinkItem[] = [
+  { to: '/sermons', label: 'Sermons', icon: Video },
+  { to: '/live', label: 'Live', icon: Radio },
+  { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
+  { to: '/feed', label: 'Feed', icon: MessagesSquare },
   { to: '/my-department', label: 'My Department', icon: Network },
   { to: '/prayer-requests', label: 'Prayer', icon: HandHeart },
   { to: '/welfare', label: 'Welfare', icon: HeartHandshake },

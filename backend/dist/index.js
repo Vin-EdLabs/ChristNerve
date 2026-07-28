@@ -33,8 +33,8 @@ const helmet_1 = __importDefault(require("helmet"));
 const fs_1 = __importDefault(require("fs"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const http_1 = require("http");
-const socket_io_1 = require("socket.io");
 const churchTenant_1 = require("./middleware/churchTenant");
+const socket_1 = require("./socket");
 const upload_1 = require("./middleware/upload");
 const reminderJob_1 = require("./jobs/reminderJob");
 const auth_1 = __importDefault(require("./routes/auth"));
@@ -54,6 +54,7 @@ const audit_1 = __importDefault(require("./routes/audit"));
 const churchPage_1 = __importStar(require("./routes/churchPage"));
 const dashboard_1 = __importDefault(require("./routes/dashboard"));
 const pastoral_1 = __importDefault(require("./routes/pastoral"));
+const churchLife_1 = __importDefault(require("./routes/churchLife"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
@@ -80,22 +81,7 @@ app.use((0, helmet_1.default)({
     // when media is served from the API origin (5001) or a separate uploads host.
     crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
-exports.io = new socket_io_1.Server(httpServer, {
-    cors: {
-        origin: (origin, callback) => {
-            callback(null, isAllowedOrigin(origin));
-        },
-        credentials: true,
-    },
-});
-exports.io.on('connection', (socket) => {
-    socket.on('join-church', (churchId) => {
-        socket.join(`church:${churchId}`);
-    });
-    socket.on('disconnect', () => {
-        // no-op
-    });
-});
+exports.io = (0, socket_1.createSocketServer)(httpServer, isAllowedOrigin);
 if (!fs_1.default.existsSync(upload_1.uploadsRoot)) {
     fs_1.default.mkdirSync(upload_1.uploadsRoot, { recursive: true });
 }
@@ -145,6 +131,7 @@ app.use('/api/notifications', notifications_1.default);
 app.use('/api/church-page', churchPage_1.default);
 app.use('/api/dashboard', dashboard_1.default);
 app.use('/api/pastoral', pastoral_1.default);
+app.use('/api/church-life', churchLife_1.default);
 app.post('/api/public/church/:slug/join', churchPage_1.publicJoinHandler);
 app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });

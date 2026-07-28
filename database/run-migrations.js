@@ -45,6 +45,7 @@ async function main() {
     'migrate-visit-join.sql',
     'migrate-notifications.sql',
     'migrate-audit.sql',
+    'migrate-live-reactions.sql',
     'migrate-market-chat.sql',
     'migrate-market-chat-listing.sql',
     'migrate-pastoral-care.sql',

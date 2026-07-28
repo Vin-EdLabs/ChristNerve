@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { requireChurchAuth } from '../middleware/churchAuth';
 import { requireChurchTenant } from '../middleware/churchTenant';
+import { notifyChurchUsers } from './notifications';
 
 const router = Router();
 
@@ -221,6 +222,34 @@ router.post('/:id/posts', async (req: Request, res: Response) => {
         meeting_at || null,
         location || null,
       ]
+    );
+
+    const deptRow = await pool.query(
+      `SELECT name FROM church_departments WHERE id = $1 AND church_id = $2`,
+      [departmentId, churchId]
+    );
+    const deptName = deptRow.rows[0]?.name || 'Your department';
+    const preview = String(title).trim().slice(0, 80);
+
+    const recipients = await pool.query(
+      `SELECT member_id FROM church_department_members
+       WHERE department_id = $1 AND church_id = $2 AND member_id != $3`,
+      [departmentId, churchId, memberId]
+    );
+
+    await Promise.all(
+      recipients.rows.map((row) =>
+        notifyChurchUsers({
+          churchId,
+          userType: 'member',
+          userId: row.member_id,
+          title: `${deptName} update`,
+          body: preview,
+          link: '/my-department',
+        }).catch((err) => {
+          console.warn('Dept post notify failed:', err);
+        })
+      )
     );
 
     res.status(201).json(result.rows[0]);

@@ -17,9 +17,8 @@ import { GivingForm } from '../../components/finance/GivingForm';
 import type { GivingFormValues } from '../../components/finance/GivingForm';
 import { ExpenseForm } from '../../components/finance/ExpenseForm';
 import type { ExpenseFormValues } from '../../components/finance/ExpenseForm';
-import { GivingSummary } from '../../components/finance/GivingSummary';
 
-type Tab = 'dashboard' | 'tithes' | 'offerings' | 'other' | 'expenses';
+type Tab = 'dashboard' | 'tithes' | 'offerings' | 'income' | 'expenses' | 'reports';
 
 function asList<T>(payload: unknown, keys: string[] = ['data']): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -62,9 +61,10 @@ export default function FinancePage() {
     tabParam === 'expenses' ||
     tabParam === 'tithes' ||
     tabParam === 'offerings' ||
-    tabParam === 'other' ||
+    tabParam === 'income' ||
+    tabParam === 'reports' ||
     tabParam === 'dashboard'
-      ? tabParam
+      ? (tabParam as Tab)
       : 'dashboard';
   const [tab, setTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
@@ -122,10 +122,11 @@ export default function FinancePage() {
       tabParam === 'expenses' ||
       tabParam === 'tithes' ||
       tabParam === 'offerings' ||
-      tabParam === 'other' ||
+      tabParam === 'income' ||
+      tabParam === 'reports' ||
       tabParam === 'dashboard'
     ) {
-      setTab(tabParam);
+      setTab(tabParam as Tab);
     }
   }, [tabParam]);
 
@@ -270,14 +271,15 @@ export default function FinancePage() {
         </div>
       </div>
 
-      <div className="page-tabs">
+      <div className="page-tabs finance-tabs">
         {(
           [
-            ['dashboard', 'Dashboard'],
+            ['dashboard', 'Overview'],
             ['tithes', 'Tithes'],
             ['offerings', 'Offerings'],
-            ['other', 'Other'],
+            ['income', 'Income'],
             ['expenses', 'Expenses'],
+            ['reports', 'Reports'],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -293,73 +295,98 @@ export default function FinancePage() {
 
       {tab === 'dashboard' && (
         <>
-          <GivingSummary summary={summary} />
-          <div className="stats-row mb-24">
-            <div className="stat-card glass-card">
-              <span className="stat-card-label">Income</span>
-              <div className="stat-card-value" style={{ fontSize: 22 }}>
-                {formatGHS(incomeTotal)}
+          <div className="finance-dashboard-shell">
+            <section className="glass-card finance-hero-panel">
+              <div>
+                <p className="finance-section-eyebrow">Treasury dashboard</p>
+                <h2 className="page-heading">A clear command view of ministry finances</h2>
+                <p className="finance-card-copy">
+                  Track giving, spending, and balance at a glance without losing the details.
+                </p>
               </div>
-              <span className="stat-card-sub">All giving types</span>
-            </div>
-            <div className="stat-card glass-card">
-              <span className="stat-card-label">Expenses</span>
-              <div className="stat-card-value" style={{ fontSize: 22 }}>
-                {formatGHS(expenseTotal)}
+              <div className="finance-hero-metrics">
+                <div className="finance-metric-card">
+                  <span>Income</span>
+                  <strong>{formatGHS(incomeTotal)}</strong>
+                </div>
+                <div className="finance-metric-card">
+                  <span>Expenses</span>
+                  <strong>{formatGHS(expenseTotal)}</strong>
+                </div>
+                <div className="finance-metric-card finance-metric-card--accent">
+                  <span>Net</span>
+                  <strong>{formatGHS(netBalance)}</strong>
+                </div>
               </div>
-              <span className="stat-card-sub">Outflow</span>
+            </section>
+
+            <div className="finance-overview-grid">
+              <div className="glass-card finance-summary-card">
+                <span className="stat-card-label">Income snapshot</span>
+                <div className="stat-card-value" style={{ fontSize: 28 }}>
+                  {formatGHS(incomeTotal)}
+                </div>
+                <p className="finance-card-copy">This month’s giving across all streams.</p>
+              </div>
+              <div className="glass-card finance-summary-card">
+                <span className="stat-card-label">Expense snapshot</span>
+                <div className="stat-card-value" style={{ fontSize: 28 }}>
+                  {formatGHS(expenseTotal)}
+                </div>
+                <p className="finance-card-copy">Current ministry outflow and commitments.</p>
+              </div>
             </div>
-            <div className="stat-card glass-card">
-              <span className="stat-card-label">By type</span>
-              <ul className="finance-mini-list">
-                {incomeByType.slice(0, 4).map((r) => (
-                  <li key={r.label}>
-                    <span>{r.label}</span>
-                    <strong>{formatGHS(r.total)}</strong>
-                  </li>
-                ))}
-              </ul>
+
+            <div className="stats-row mb-24">
+              <div className="stat-card glass-card">
+                <span className="stat-card-label">Income by type</span>
+                <ul className="finance-mini-list">
+                  {incomeByType.slice(0, 4).map((r) => (
+                    <li key={r.label}>
+                      <span>{r.label}</span>
+                      <strong>{formatGHS(r.total)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="stat-card glass-card">
+                <span className="stat-card-label">Expense categories</span>
+                <ul className="finance-mini-list">
+                  {expensesByCategory.slice(0, 4).map((r) => (
+                    <li key={r.label}>
+                      <span>{r.label}</span>
+                      <strong>{formatGHS(r.total)}</strong>
+                    </li>
+                  ))}
+                  {expensesByCategory.length === 0 && (
+                    <li>
+                      <span>No expenses yet</span>
+                    </li>
+                  )}
+                </ul>
+              </div>
             </div>
-            <div className="stat-card glass-card">
-              <span className="stat-card-label">Expense categories</span>
-              <ul className="finance-mini-list">
-                {expensesByCategory.slice(0, 4).map((r) => (
-                  <li key={r.label}>
-                    <span>{r.label}</span>
-                    <strong>{formatGHS(r.total)}</strong>
-                  </li>
-                ))}
-                {expensesByCategory.length === 0 && (
-                  <li>
-                    <span>No expenses yet</span>
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
-          <div className="finance-toolbar">
-            <h2 className="page-heading">Quick actions</h2>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Button variant="primary" onClick={() => setGivingOpen(true)}>
-                <Plus size={16} /> Record Giving
-              </Button>
-              <Button variant="outline" onClick={() => setExpenseOpen(true)}>
-                <Plus size={16} /> Record Expense
-              </Button>
+
+            <div className="finance-toolbar">
+              <h2 className="page-heading">Quick actions</h2>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Button variant="primary" onClick={() => setGivingOpen(true)}>
+                  <Plus size={16} /> Record Giving
+                </Button>
+                <Button variant="outline" onClick={() => setExpenseOpen(true)}>
+                  <Plus size={16} /> Record Expense
+                </Button>
+              </div>
             </div>
           </div>
         </>
       )}
 
-      {(tab === 'tithes' || tab === 'offerings' || tab === 'other') && (
+      {(tab === 'tithes' || tab === 'offerings') && (
         <>
           <div className="finance-toolbar">
             <h2 className="page-heading">
-              {tab === 'tithes'
-                ? 'Tithes'
-                : tab === 'offerings'
-                  ? 'Offerings'
-                  : 'Other giving'}
+              {tab === 'tithes' ? 'Tithes' : 'Offerings'}
             </h2>
             <Button variant="primary" onClick={() => setGivingOpen(true)}>
               <Plus size={16} />
@@ -369,9 +396,7 @@ export default function FinancePage() {
           <section className="card glass-card">
             {giving.filter((g) => {
               const t = String(g.giving_type || '');
-              if (tab === 'tithes') return t === 'Tithe';
-              if (tab === 'offerings') return t === 'Offering';
-              return t !== 'Tithe' && t !== 'Offering';
+              return tab === 'tithes' ? t === 'Tithe' : t === 'Offering';
             }).length === 0 ? (
               <EmptyState
                 title={`No ${tab} recorded yet.`}
@@ -395,9 +420,7 @@ export default function FinancePage() {
                     {giving
                       .filter((g) => {
                         const t = String(g.giving_type || '');
-                        if (tab === 'tithes') return t === 'Tithe';
-                        if (tab === 'offerings') return t === 'Offering';
-                        return t !== 'Tithe' && t !== 'Offering';
+                        return tab === 'tithes' ? t === 'Tithe' : t === 'Offering';
                       })
                       .map((g) => (
                         <tr key={g.id}>
@@ -411,19 +434,76 @@ export default function FinancePage() {
                           </td>
                           <td>{g.giving_type}</td>
                           <td>{formatGHS(Number(g.amount))}</td>
-                          <td>{g.payment_method || 'â€”'}</td>
+                          <td>{g.payment_method || '—'}</td>
                           <td>
                             {g.service_date
                               ? new Date(g.service_date).toLocaleDateString('en-GH')
-                              : 'â€”'}
+                              : '—'}
                           </td>
-                          <td>{g.receipt_number || 'â€”'}</td>
+                          <td>{g.receipt_number || '—'}</td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
               </div>
             )}
+          </section>
+        </>
+      )}
+
+      {tab === 'income' && (
+        <>
+          <div className="finance-toolbar">
+            <h2 className="page-heading">Income</h2>
+            <Button variant="primary" onClick={() => setGivingOpen(true)}>
+              <Plus size={16} /> Record Giving
+            </Button>
+          </div>
+          <div className="finance-detail-grid">
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">This month</p>
+              <h3 className="finance-detail-title">{formatGHS(incomeTotal)}</h3>
+              <p className="finance-card-copy">Total received across tithes, offerings, and other giving.</p>
+            </section>
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">By type</p>
+              <ul className="finance-mini-list">
+                {incomeByType.length === 0 ? (
+                  <li><span>No income yet</span></li>
+                ) : incomeByType.map((r) => (
+                  <li key={r.label}>
+                    <span>{r.label}</span>
+                    <strong>{formatGHS(r.total)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+          <section className="card glass-card">
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {giving.slice(0, 12).map((g) => (
+                    <tr key={g.id}>
+                      <td>{g.member_name || (g.first_name ? `${g.first_name} ${g.last_name || ''}` : 'Anonymous')}</td>
+                      <td>{g.giving_type}</td>
+                      <td>{formatGHS(Number(g.amount))}</td>
+                      <td>{g.payment_method || '—'}</td>
+                      <td>{g.service_date ? new Date(g.service_date).toLocaleDateString('en-GH') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         </>
       )}
@@ -436,6 +516,26 @@ export default function FinancePage() {
               <Plus size={16} />
               Record Expense
             </Button>
+          </div>
+          <div className="finance-detail-grid">
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">Outflow</p>
+              <h3 className="finance-detail-title">{formatGHS(expenseTotal)}</h3>
+              <p className="finance-card-copy">Current spending across ministry operations and events.</p>
+            </section>
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">Categories</p>
+              <ul className="finance-mini-list">
+                {expensesByCategory.length === 0 ? (
+                  <li><span>No expenses yet</span></li>
+                ) : expensesByCategory.map((r) => (
+                  <li key={r.label}>
+                    <span>{r.label}</span>
+                    <strong>{formatGHS(r.total)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
           <section className="card glass-card">
             {expenses.length === 0 ? (
@@ -462,11 +562,11 @@ export default function FinancePage() {
                         <td>{e.category}</td>
                         <td>{e.description}</td>
                         <td>{formatGHS(Number(e.amount))}</td>
-                        <td>{e.payment_method || 'â€”'}</td>
+                        <td>{e.payment_method || '—'}</td>
                         <td>
                           {e.expense_date
                             ? new Date(e.expense_date).toLocaleDateString('en-GH')
-                            : 'â€”'}
+                            : '—'}
                         </td>
                       </tr>
                     ))}
@@ -475,6 +575,43 @@ export default function FinancePage() {
               </div>
             )}
           </section>
+        </>
+      )}
+
+      {tab === 'reports' && (
+        <>
+          <div className="finance-toolbar">
+            <h2 className="page-heading">Reports</h2>
+          </div>
+          <div className="finance-detail-grid">
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">Net balance</p>
+              <h3 className="finance-detail-title">{formatGHS(netBalance)}</h3>
+              <p className="finance-card-copy">Income minus expenses for the current month.</p>
+            </section>
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">Income</p>
+              <ul className="finance-mini-list">
+                {incomeByType.slice(0, 5).map((r) => (
+                  <li key={r.label}>
+                    <span>{r.label}</span>
+                    <strong>{formatGHS(r.total)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="glass-card finance-detail-card">
+              <p className="finance-section-eyebrow">Expenses</p>
+              <ul className="finance-mini-list">
+                {expensesByCategory.slice(0, 5).map((r) => (
+                  <li key={r.label}>
+                    <span>{r.label}</span>
+                    <strong>{formatGHS(r.total)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
         </>
       )}
 
@@ -552,6 +689,88 @@ export default function FinancePage() {
           gap: 8px;
           font-size: 12px;
         }
+        .finance-tabs {
+          margin-top: -4px;
+        }
+        .finance-dashboard-shell {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .finance-hero-panel {
+          padding: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          background: linear-gradient(135deg, rgba(180, 90, 40, 0.12), rgba(255,255,255,0.05));
+        }
+        .finance-section-eyebrow {
+          margin: 0 0 6px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+        }
+        .finance-hero-metrics {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .finance-metric-card {
+          min-width: 110px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.62);
+          border: 1px solid rgba(0,0,0,0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .finance-metric-card span {
+          font-size: 11px;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .finance-metric-card strong {
+          font-size: 16px;
+          font-family: var(--font-mono);
+        }
+        .finance-metric-card--accent {
+          background: rgba(180, 90, 40, 0.16);
+        }
+        .finance-overview-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .finance-summary-card {
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .finance-card-copy {
+          margin: 0;
+          font-size: 13px;
+          color: var(--text-muted);
+        }
+        .finance-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .finance-detail-card {
+          padding: 16px 18px;
+        }
+        .finance-detail-title {
+          margin: 0 0 6px;
+          font-size: 24px;
+          font-family: var(--font-mono);
+        }
         .finance-toolbar {
           display: flex;
           align-items: center;
@@ -566,6 +785,18 @@ export default function FinancePage() {
         }
         .table-wrap { overflow-x: auto; }
         .mono { font-family: var(--font-mono); font-size: 13px; }
+        @media (max-width: 720px) {
+          .finance-overview-grid,
+          .finance-detail-grid {
+            grid-template-columns: 1fr;
+          }
+          .finance-hero {
+            align-items: flex-start;
+          }
+          .finance-hero-panel {
+            align-items: flex-start;
+          }
+        }
       `}</style>
     </div>
   );

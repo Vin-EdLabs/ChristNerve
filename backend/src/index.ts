@@ -4,8 +4,8 @@ import helmet from 'helmet';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import { resolveChurchTenant } from './middleware/churchTenant';
+import { createSocketServer } from './socket';
 import { uploadsRoot } from './middleware/upload';
 import { startReminderJob } from './jobs/reminderJob';
 
@@ -26,6 +26,7 @@ import auditRoutes from './routes/audit';
 import churchPageRoutes, { publicJoinHandler } from './routes/churchPage';
 import dashboardRoutes from './routes/dashboard';
 import pastoralRoutes from './routes/pastoral';
+import churchLifeRoutes from './routes/churchLife';
 
 dotenv.config();
 
@@ -63,24 +64,7 @@ app.use(
   })
 );
 
-export const io = new Server(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      callback(null, isAllowedOrigin(origin));
-    },
-    credentials: true,
-  },
-});
-
-io.on('connection', (socket) => {
-  socket.on('join-church', (churchId: number | string) => {
-    socket.join(`church:${churchId}`);
-  });
-
-  socket.on('disconnect', () => {
-    // no-op
-  });
-});
+export const io = createSocketServer(httpServer, isAllowedOrigin);
 
 if (!fs.existsSync(uploadsRoot)) {
   fs.mkdirSync(uploadsRoot, { recursive: true });
@@ -139,6 +123,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/church-page', churchPageRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/pastoral', pastoralRoutes);
+app.use('/api/church-life', churchLifeRoutes);
 app.post('/api/public/church/:slug/join', publicJoinHandler);
 
 app.use('/api', (_req, res) => {

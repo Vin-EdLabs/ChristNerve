@@ -4,9 +4,10 @@ import {
   Home,
   Users,
   Wallet,
-  Store,
   Menu,
-  Network,
+  Video,
+  MessagesSquare,
+  Newspaper,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
@@ -25,17 +26,17 @@ function staffTabsForRole(role?: string | null): Tab[] {
   return [
     { to: '/', label: 'Home', icon: Home, end: true, badge: 'messages' },
     { to: '/members', label: 'Members', icon: Users },
+    { to: '/sermons', label: 'Sermons', icon: Video },
     { to: '/finance', label: 'Finance', icon: Wallet },
-    { to: '/market', label: 'Market', icon: Store },
     { to: '/more', label: 'More', icon: Menu },
   ];
 }
 
 const MEMBER_TABS: Tab[] = [
   { to: '/', label: 'Home', icon: Home, end: true, badge: 'messages' },
-  { to: '/market', label: 'Market', icon: Store },
-  { to: '/my-department', label: 'Dept', icon: Network },
-  { to: '/market/my-listings', label: 'Shop', icon: Store },
+  { to: '/sermons', label: 'Sermons', icon: Video },
+  { to: '/feed', label: 'Feed', icon: MessagesSquare },
+  { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
   { to: '/more', label: 'More', icon: Menu },
 ];
 

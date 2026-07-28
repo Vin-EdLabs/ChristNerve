@@ -1,4 +1,4 @@
 /**
- * Lightweight reminder job — logs a tick and optionally checks upcoming events.
+ * Church-life reminder job: events, birthdays, absentees, milestone badges.
  */
 export declare function startReminderJob(): NodeJS.Timeout;

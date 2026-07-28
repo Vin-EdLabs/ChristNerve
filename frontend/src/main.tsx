@@ -13,7 +13,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
     <Toaster
-      position="top-right"
+      position="top-center"
+      containerStyle={{
+        top: 14,
+        left: 0,
+        right: 0,
+        zIndex: 16000,
+        display: 'flex',
+        justifyContent: 'center',
+        padding: '0 12px',
+      }}
       toastOptions={{
         duration: 3500,
         style: {
@@ -21,6 +30,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           fontSize: '14px',
           borderRadius: '10px',
           border: '1px solid var(--border, #e8e4dc)',
+          maxWidth: 'min(92vw, 380px)',
+          width: 'auto',
+          margin: '0 auto',
         },
       }}
     />

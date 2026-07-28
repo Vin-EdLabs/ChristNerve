@@ -37,6 +37,14 @@ import PrayerRequestsPage from './pages/dashboard/PrayerRequestsPage';
 import FollowUpPage from './pages/dashboard/FollowUpPage';
 import WelfarePage from './pages/dashboard/WelfarePage';
 import CellGroupsPage from './pages/dashboard/CellGroupsPage';
+import SermonsPage from './pages/dashboard/SermonsPage';
+import LiveStreamPage from './pages/dashboard/LiveStreamPage';
+import DevotionalsPage from './pages/dashboard/DevotionalsPage';
+import BulletinPage from './pages/dashboard/BulletinPage';
+import ChurchFeedPage from './pages/dashboard/ChurchFeedPage';
+import SundayReportPage from './pages/dashboard/SundayReportPage';
+import GrowthDashboardPage from './pages/dashboard/GrowthDashboardPage';
+import WhatsAppActionsPage from './pages/dashboard/WhatsAppActionsPage';
 import MarketplacePage from './pages/marketplace/MarketplacePage';
 import { Spinner } from './components/ui/Spinner';
 import { useAuth } from './contexts/AuthContext';
@@ -176,6 +184,14 @@ function ChurchApp() {
                 <Route path="follow-up" element={<FollowUpPage />} />
                 <Route path="welfare" element={<WelfarePage />} />
                 <Route path="cell-groups" element={<CellGroupsPage />} />
+                <Route path="sermons" element={<SermonsPage />} />
+                <Route path="live" element={<LiveStreamPage />} />
+                <Route path="devotionals" element={<DevotionalsPage />} />
+                <Route path="bulletin" element={<BulletinPage />} />
+                <Route path="feed" element={<ChurchFeedPage />} />
+                <Route path="sunday-report" element={<SundayReportPage />} />
+                <Route path="growth" element={<GrowthDashboardPage />} />
+                <Route path="whatsapp-actions" element={<WhatsAppActionsPage />} />
                 <Route path="audit" element={<AuditPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="more" element={<MorePage />} />

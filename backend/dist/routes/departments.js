@@ -4,6 +4,7 @@ const express_1 = require("express");
 const db_1 = require("../db");
 const churchAuth_1 = require("../middleware/churchAuth");
 const churchTenant_1 = require("../middleware/churchTenant");
+const notifications_1 = require("./notifications");
 const router = (0, express_1.Router)();
 router.use(churchTenant_1.requireChurchTenant, churchAuth_1.requireChurchAuth);
 async function isDeptLeader(churchId, departmentId, memberId) {
@@ -172,6 +173,21 @@ router.post('/:id/posts', async (req, res) => {
             meeting_at || null,
             location || null,
         ]);
+        const deptRow = await db_1.pool.query(`SELECT name FROM church_departments WHERE id = $1 AND church_id = $2`, [departmentId, churchId]);
+        const deptName = deptRow.rows[0]?.name || 'Your department';
+        const preview = String(title).trim().slice(0, 80);
+        const recipients = await db_1.pool.query(`SELECT member_id FROM church_department_members
+       WHERE department_id = $1 AND church_id = $2 AND member_id != $3`, [departmentId, churchId, memberId]);
+        await Promise.all(recipients.rows.map((row) => (0, notifications_1.notifyChurchUsers)({
+            churchId,
+            userType: 'member',
+            userId: row.member_id,
+            title: `${deptName} update`,
+            body: preview,
+            link: '/my-department',
+        }).catch((err) => {
+            console.warn('Dept post notify failed:', err);
+        })));
         res.status(201).json(result.rows[0]);
     }
     catch (err) {

@@ -11,6 +11,7 @@ import {
   Heart,
   AlertTriangle,
   ChevronRight,
+  Cake,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -19,6 +20,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import MemberHome from './MemberHome';
+import { asList } from '../../utils/churchLife';
+import { whatsappShareUrl } from '../../utils/youtube';
 
 type DashPayload = {
   focus?: {
@@ -81,6 +84,88 @@ function timeAgo(iso?: string) {
   const days = Math.floor(hrs / 24);
   if (days === 1) return 'Yesterday';
   return `${days} days ago`;
+}
+
+function BirthdayWidget() {
+  const [birthdays, setBirthdays] = useState<
+    Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      phone?: string | null;
+      whatsapp?: string | null;
+    }>
+  >([]);
+  const [anniversaries, setAnniversaries] = useState<
+    Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      phone?: string | null;
+      whatsapp?: string | null;
+    }>
+  >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get('/church-life/birthdays');
+        if (cancelled) return;
+        const d = res.data?.data || res.data || {};
+        setBirthdays(asList(d.birthdays));
+        setAnniversaries(asList(d.anniversaries));
+      } catch {
+        /* optional widget */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rows = [
+    ...birthdays.map((p) => ({ ...p, kind: 'Birthday' as const })),
+    ...anniversaries.map((p) => ({ ...p, kind: 'Anniversary' as const })),
+  ];
+
+  if (!rows.length) {
+    return <p className="dash-muted">No birthdays or anniversaries today.</p>;
+  }
+
+  return (
+    <ul className="dash-bday-list">
+      {rows.map((p) => {
+        const name = `${p.first_name} ${p.last_name}`.trim();
+        const wish =
+          p.kind === 'Birthday'
+            ? `Happy Birthday ${name}! 🎂 May God bless you abundantly this year. Love from your church family!`
+            : `Happy Anniversary ${name}! May God continue to bless your marriage. Love from your church family!`;
+        const phone = (p.whatsapp || p.phone || '').replace(/\D/g, '');
+        const href = phone
+          ? `https://wa.me/${phone}?text=${encodeURIComponent(wish)}`
+          : whatsappShareUrl(wish);
+        return (
+          <li key={`${p.kind}-${p.id}`}>
+            <div>
+              <Cake size={14} />
+              <strong>{name}</strong>
+              <span>{p.kind}</span>
+            </div>
+            <a href={href} target="_blank" rel="noreferrer" className="dash-inline-btn">
+              WhatsApp
+            </a>
+          </li>
+        );
+      })}
+      <style>{`
+        .dash-bday-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+        .dash-bday-list li { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+        .dash-bday-list li div { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .dash-bday-list span { opacity:.65; font-size:.8rem; }
+      `}</style>
+    </ul>
+  );
 }
 
 function barPct(value: number, max: number) {
@@ -295,6 +380,14 @@ function StaffDashboardHome() {
         </div>
 
         <div className="dash-main-right">
+          <section className="card dash-panel">
+            <div className="dash-section-head">
+              <p className="dash-section-label">Celebrating today</p>
+              <Link to="/whatsapp-actions">Wish them</Link>
+            </div>
+            <BirthdayWidget />
+          </section>
+
           <section className="card dash-panel">
             <p className="dash-section-label">Member pulse</p>
             <div className="dash-pulse-row">

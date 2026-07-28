@@ -18,6 +18,14 @@ import {
   HandHeart,
   UsersRound,
   Receipt,
+  Video,
+  Radio,
+  BookOpen,
+  Newspaper,
+  MessagesSquare,
+  ClipboardList,
+  TrendingUp,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
@@ -64,11 +72,29 @@ const STAFF_SECTIONS: NavSection[] = [
     ],
   },
   {
+    label: 'Media & Content',
+    items: [
+      { to: '/sermons', label: 'Sermons', icon: Video },
+      { to: '/live', label: 'Live Stream', icon: Radio },
+      { to: '/devotionals', label: 'Devotionals', icon: BookOpen },
+      { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
+      { to: '/feed', label: 'Church Feed', icon: MessagesSquare },
+    ],
+  },
+  {
     label: 'Communication',
     items: [
       { to: '/announcements', label: 'Announcements', icon: Megaphone },
       { to: '/events', label: 'Events', icon: Calendar },
       { to: '/church-page', label: 'Church Page', icon: Church },
+    ],
+  },
+  {
+    label: 'Reports & Insights',
+    items: [
+      { to: '/sunday-report', label: 'Sunday Report', icon: ClipboardList },
+      { to: '/growth', label: 'Growth', icon: TrendingUp },
+      { to: '/whatsapp-actions', label: 'WhatsApp Actions', icon: MessageCircle },
     ],
   },
   {
@@ -111,6 +137,11 @@ const MEMBER_SECTIONS: NavSection[] = [
   {
     label: 'Church life',
     items: [
+      { to: '/sermons', label: 'Sermons', icon: Video },
+      { to: '/live', label: 'Live Stream', icon: Radio },
+      { to: '/devotionals', label: 'Devotionals', icon: BookOpen },
+      { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
+      { to: '/feed', label: 'Church Feed', icon: MessagesSquare },
       { to: '/my-department', label: 'My Department', icon: Network },
       { to: '/announcements', label: 'Announcements', icon: Megaphone },
       { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart },

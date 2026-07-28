@@ -1,0 +1,31 @@
+/**
+ * YouTube helpers shared by sermons + live stream.
+ */
+export function extractYoutubeId(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const url = raw.trim();
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = u.pathname.replace('/', '').split('/')[0];
+      return id || null;
+    }
+    if (host.includes('youtube.com')) {
+      const v = u.searchParams.get('v');
+      if (v) return v;
+      const parts = u.pathname.split('/').filter(Boolean);
+      for (const key of ['embed', 'shorts', 'live']) {
+        const i = parts.indexOf(key);
+        if (i >= 0 && parts[i + 1]) return parts[i + 1];
+      }
+    }
+  } catch {
+    if (/^[\w-]{11}$/.test(url)) return url;
+  }
+  return null;
+}
+
+export function youtubeThumbnail(id: string): string {
+  return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+}
