@@ -42,6 +42,17 @@ export interface RoomControlsProps {
 
 type PendingAction = 'leave' | 'end' | null;
 
+/**
+ * The Screen Capture API is a desktop-only browser feature — no mobile browser (iOS Safari,
+ * Android Chrome, Samsung Internet, Firefox Android) exposes getDisplayMedia to web pages at
+ * all, since none of those OSes let a browser tab capture the screen. That's a platform
+ * restriction, not a ChristNerve bug, so instead of letting the tap fail with a confusing
+ * "not allowed" error we detect it upfront and explain it plainly.
+ */
+function isScreenShareSupported(): boolean {
+  return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
+}
+
 export function RoomControls({
   canPublish,
   canManage,
@@ -63,6 +74,7 @@ export function RoomControls({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
+  const shareSupported = isScreenShareSupported();
 
   // A page refresh kills the browser's screen-capture stream outright — there's no way to
   // silently resume it (the Screen Capture API requires a fresh user gesture + picker every
@@ -136,15 +148,28 @@ export function RoomControls({
               {isCameraEnabled ? <Video size={20} /> : <VideoOff size={20} />}
               <span>Cam</span>
             </TrackToggle>
-            <TrackToggle
-              source={Track.Source.ScreenShare}
-              showIcon={false}
-              className={`rc-btn${isScreenShareEnabled ? ' rc-active' : ''}`}
-              onDeviceError={() => toast.error('Screen sharing is not available on this device')}
-            >
-              {isScreenShareEnabled ? <ScreenShareOff size={20} /> : <ScreenShare size={20} />}
-              <span>Share</span>
-            </TrackToggle>
+            {shareSupported ? (
+              <TrackToggle
+                source={Track.Source.ScreenShare}
+                showIcon={false}
+                className={`rc-btn${isScreenShareEnabled ? ' rc-active' : ''}`}
+                onDeviceError={() => toast.error('Screen sharing is not available on this device')}
+              >
+                {isScreenShareEnabled ? <ScreenShareOff size={20} /> : <ScreenShare size={20} />}
+                <span>Share</span>
+              </TrackToggle>
+            ) : (
+              <button
+                type="button"
+                className="rc-btn rc-btn-unsupported"
+                onClick={() =>
+                  toast('Screen sharing isn’t available in phone browsers — open this room on a laptop or desktop to share your screen.', { duration: 5000 })
+                }
+              >
+                <ScreenShare size={20} />
+                <span>Share</span>
+              </button>
+            )}
           </>
         )}
 
@@ -267,6 +292,8 @@ export function RoomControls({
         .rc-neutral-off { color: #9a958f; }
         .rc-active { background: var(--vr-accent, #7c5cbf); color: #fff; }
         .rc-active span { opacity: 1; }
+        .rc-btn-unsupported { color: #9a958f; }
+        .rc-btn-unsupported span { opacity: .5; }
         .rc-badge {
           position: absolute; top: 2px; right: 6px; min-width: 16px; height: 16px;
           border-radius: 999px; background: #b42318; color: #fff; font-size: .6rem;

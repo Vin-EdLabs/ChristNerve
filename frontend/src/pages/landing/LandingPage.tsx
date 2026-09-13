@@ -7,6 +7,15 @@ import {
   ArrowRight,
   ImagePlus,
   X,
+  Radio,
+  Video,
+  Mic,
+  ScreenShare,
+  MessageCircle,
+  Briefcase,
+  Tag,
+  Smile,
+  LogOut,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BrandLogo } from '../../components/ui/BrandLogo';
@@ -70,8 +79,24 @@ const FEATURES = [
     icon: Store,
     title: 'Member Marketplace',
     description:
-      "Every member gets a personal storefront. They share it. Outsiders discover your church. Your community grows.",
+      'Every member gets a personal storefront they can share. Sell products with a price, or list a professional service — plumber, lawyer, mason, driver, and more — no price needed, just your work and photos.',
     image: '/landing/market.jpg',
+    reverse: false,
+  },
+  {
+    icon: Radio,
+    title: 'Live Stream Your Services',
+    description:
+      'Paste your YouTube live link and go live in seconds. Members watch right inside the app, react in real time, and drop comments like a live chat — just like YouTube. Every past service is saved automatically so anyone can catch up later.',
+    mockup: 'livestream' as const,
+    reverse: true,
+  },
+  {
+    icon: Video,
+    title: 'Live Rooms — Video Calls Built In',
+    description:
+      'Host real video meetings without leaving ChristNerve — devotions, cell groups, counseling, or a full staff meeting, just like Zoom. Everyone tiles into a grid with camera, mic, and screen share; pin whoever is speaking, react with emoji, and chat on the side.',
+    mockup: 'liveroom' as const,
     reverse: false,
   },
 ];
@@ -135,6 +160,92 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return (
     (err as { response?: { data?: { error?: string } } })?.response?.data
       ?.error || fallback
+  );
+}
+
+/** Mini mockup of the Live Stream page — no real screenshot needed to show the idea. */
+function LiveStreamMockup() {
+  return (
+    <div className="landing-live-mock">
+      <div className="landing-live-mock-video">
+        <span className="landing-live-mock-badge">
+          <span className="landing-live-mock-dot" /> LIVE
+        </span>
+        <span className="landing-live-mock-play" aria-hidden>
+          ▶
+        </span>
+      </div>
+      <div className="landing-live-mock-reactions">
+        <span>🙏 24</span>
+        <span>🔥 12</span>
+        <span>❤️ 31</span>
+        <span>🙌 8</span>
+        <span>😂 5</span>
+      </div>
+      <div className="landing-live-mock-chat">
+        <p><strong>Ama:</strong> Amen! 🙏</p>
+        <p><strong>Kofi:</strong> Watching from Kumasi</p>
+      </div>
+    </div>
+  );
+}
+
+const ROOM_MOCK_PALETTE = ['#7c5cbf', '#2f9a6e', '#b4562f', '#2f8fa9', '#c0447a', '#9a7d2f', '#4A2F9A', '#2f7a9a'];
+const ROOM_MOCK_NAMES = ['KO', 'AM', 'EA', 'YO', 'KM', 'AB', 'EO', 'AV'];
+
+/** Mockup of a live Zoom-style Live Room — screen share, filmstrip, and real controls. */
+function LiveRoomMockup() {
+  return (
+    <div className="landing-room-mock">
+      <div className="landing-room-mock-topbar">
+        <span className="landing-room-mock-live">
+          <span className="landing-room-mock-live-dot" /> LIVE
+        </span>
+        <span className="landing-room-mock-title">Sunday Service</span>
+        <span className="landing-room-mock-count">
+          <Users size={12} /> 20
+        </span>
+      </div>
+
+      <div className="landing-room-mock-stage">
+        <div className="landing-room-mock-slide">
+          <span className="landing-room-mock-slide-tag">
+            <ScreenShare size={11} /> Pastor Kwesi is presenting
+          </span>
+          <p>&ldquo;For I know the plans I have for you,&rdquo;</p>
+          <span className="landing-room-mock-slide-ref">— Jeremiah 29:11</span>
+        </div>
+        <div className="landing-room-mock-selfcam">You</div>
+      </div>
+
+      <div className="landing-room-mock-filmstrip">
+        {ROOM_MOCK_NAMES.map((n, i) => (
+          <span
+            key={n}
+            className="landing-room-mock-avatar"
+            style={{ background: ROOM_MOCK_PALETTE[i % ROOM_MOCK_PALETTE.length] }}
+          >
+            {n}
+          </span>
+        ))}
+        <span className="landing-room-mock-more">+12</span>
+      </div>
+
+      <div className="landing-room-mock-bar">
+        <span className="landing-room-mock-btn is-on"><Mic size={14} /></span>
+        <span className="landing-room-mock-btn is-on"><Video size={14} /></span>
+        <span className="landing-room-mock-btn is-active"><ScreenShare size={14} /></span>
+        <span className="landing-room-mock-btn"><Smile size={14} /></span>
+        <span className="landing-room-mock-btn landing-room-mock-btn--badge">
+          <Users size={14} />
+          <span className="landing-room-mock-badge">20</span>
+        </span>
+        <span className="landing-room-mock-btn"><MessageCircle size={14} /></span>
+        <span className="landing-room-mock-leave">
+          <LogOut size={12} /> Leave
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -455,7 +566,13 @@ export default function LandingPage() {
                 <p className="landing-feature-desc">{feature.description}</p>
               </div>
               <div className="landing-feature-visual">
-                <img src={feature.image} alt="" loading="lazy" />
+                {feature.mockup === 'livestream' ? (
+                  <LiveStreamMockup />
+                ) : feature.mockup === 'liveroom' ? (
+                  <LiveRoomMockup />
+                ) : (
+                  <img src={feature.image} alt="" loading="lazy" />
+                )}
               </div>
             </div>
           );
@@ -470,6 +587,24 @@ export default function LandingPage() {
             Your members sell what they already make or do. Shoppers discover them —
             and your church grows through real relationships, not ads.
           </p>
+
+          <div className="landing-market-types">
+            <div className="landing-market-type-card">
+              <div className="landing-market-type-icon">
+                <Tag size={20} />
+              </div>
+              <h4>Products</h4>
+              <p>Kente, food, phones, gadgets — anything with a price, ready to ship or pick up.</p>
+            </div>
+            <div className="landing-market-type-card">
+              <div className="landing-market-type-icon">
+                <Briefcase size={20} />
+              </div>
+              <h4>Professionals</h4>
+              <p>Plumbers, lawyers, masons, drivers — a portfolio of their work, no price needed. People reach out to discuss rates directly.</p>
+            </div>
+          </div>
+
           <div className="landing-how-grid">
             {MARKET_HOW.map((step, i) => (
               <article key={step.title} className="landing-how-card">

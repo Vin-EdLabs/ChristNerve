@@ -56,14 +56,15 @@ export function InvitePopover({ roomId, churchSlug, initialEnabled, initialCode,
       {enabled && link && (
         <div className="rc-invite-link-row">
           <input readOnly value={link} onFocus={(e) => e.target.select()} />
-          <button type="button" onClick={copyLink} aria-label="Copy link">
+          <button type="button" className="rc-invite-copy-btn" onClick={copyLink} aria-label="Copy link">
             {copied ? <Check size={15} /> : <Copy size={15} />}
+            <span>{copied ? 'Copied' : 'Copy'}</span>
           </button>
         </div>
       )}
 
       <style>{`
-        .rc-invite { width: 280px; text-align: left; bottom: calc(100% + 10px); }
+        .rc-invite { width: min(300px, calc(100vw - 32px)); text-align: left; bottom: calc(100% + 10px); }
         .rc-invite-head {
           display: flex; align-items: center; justify-content: space-between;
           font-size: .78rem; font-weight: 700; margin-bottom: 6px;
@@ -75,12 +76,15 @@ export function InvitePopover({ roomId, churchSlug, initialEnabled, initialCode,
         .rc-invite-link-row { display: flex; gap: 6px; margin-top: 10px; }
         .rc-invite-link-row input {
           flex: 1; min-width: 0; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
-          border-radius: 8px; padding: 6px 8px; color: #fff; font-size: .74rem;
+          border-radius: 8px; padding: 8px 10px; color: #fff; font-size: .74rem;
         }
-        .rc-invite-link-row button {
+        .rc-invite-copy-btn {
           border: 0; background: var(--vr-accent, #7c5cbf); color: #fff; border-radius: 8px;
-          width: 32px; flex-shrink: 0; cursor: pointer; display: grid; place-items: center;
+          flex-shrink: 0; cursor: pointer; padding: 0 12px; height: auto;
+          display: inline-flex; align-items: center; gap: 6px;
+          font-size: .78rem; font-weight: 700; white-space: nowrap;
         }
+        .rc-invite-copy-btn:hover { filter: brightness(1.08); }
       `}</style>
     </div>
   );

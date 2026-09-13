@@ -26,9 +26,6 @@ const ROOM_TYPES = [
 ] as const;
 type RoomType = (typeof ROOM_TYPES)[number];
 
-/** Broadcast rooms: one large host, everyone else viewer-only unless promoted. */
-const BROADCAST_TYPES = new Set<RoomType>(['devotion', 'service']);
-
 function isRoomType(value: unknown): value is RoomType {
   return typeof value === 'string' && (ROOM_TYPES as readonly string[]).includes(value);
 }
@@ -178,7 +175,9 @@ router.post('/rooms/public/:code/token', async (req: Request, res: Response) => 
     }
 
     const identity = `guest-${randomUUID()}`;
-    const canPublish = !BROADCAST_TYPES.has(liveRoom.room_type as RoomType);
+    // Guests get the same mic/camera/screen-share access as signed-in members —
+    // only the room being ended/staff-only actions are restricted, not publishing.
+    const canPublish = true;
 
     const token = await createRoomToken({
       roomName: liveRoom.livekit_room,

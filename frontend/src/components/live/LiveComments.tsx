@@ -43,7 +43,9 @@ export function LiveComments({ churchId, active = false }: Props) {
     socket.emit('join-live-room', churchId);
     socket.on('comment:new', (comment: Comment) => {
       if (!mounted) return;
-      setComments((prev) => [...prev, comment]);
+      // The poster already appended their own comment optimistically on submit —
+      // skip it here so it doesn't render twice once the broadcast echoes back.
+      setComments((prev) => (prev.some((c) => c.id === comment.id) ? prev : [...prev, comment]));
     });
 
     return () => {
@@ -63,7 +65,11 @@ export function LiveComments({ churchId, active = false }: Props) {
     if (!body) return;
     setSending(true);
     try {
-      await api.post('/church-life/live/comments', { body });
+      // Show it immediately instead of waiting on the socket round-trip — the poster
+      // shouldn't need a page refresh to see their own message land.
+      const res = await api.post('/church-life/live/comments', { body });
+      const posted = res.data as Comment;
+      setComments((prev) => (prev.some((c) => c.id === posted.id) ? prev : [...prev, posted]));
       setDraft('');
     } catch {
       /* toast not critical for a comment box */

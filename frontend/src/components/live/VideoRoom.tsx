@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import '@livekit/components-styles';
 import { LiveKitRoom, RoomAudioRenderer, useParticipants } from '@livekit/components-react';
 import { DisconnectReason } from 'livekit-client';
@@ -8,7 +8,7 @@ import { isBroadcastRoom, roomTypeMeta } from '../../utils/liveRooms';
 import { useElapsedTimer } from '../../utils/useElapsedTimer';
 import { MeetingRoom } from './MeetingRoom';
 import { RoomControls } from './RoomControls';
-import { RoomChat } from './RoomChat';
+import { RoomChat, useRoomChatChannel } from './RoomChat';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { ReactionsOverlay, useReactionChannel } from './LiveReactions';
 import { useModeration } from './ModeratorControls';
@@ -87,6 +87,7 @@ function RoomShell({
   churchSlug,
   churchLogoUrl,
   pip,
+  chat,
   onRequestEndRoom,
   onRemoved,
 }: {
@@ -97,11 +98,11 @@ function RoomShell({
   churchSlug: string;
   churchLogoUrl?: string | null;
   pip: UseCallPipResult;
+  chat: ReturnType<typeof useRoomChatChannel>;
   onRequestEndRoom: () => void;
   onRemoved: () => void;
 }) {
   const [activePanel, setActivePanel] = useState<SidePanel>('none');
-  const [unreadChat, setUnreadChat] = useState(0);
   const participants = useParticipants();
   const { floating, react } = useReactionChannel();
   const { muteParticipant, removeParticipant } = useModeration({ onRemoved });
@@ -109,6 +110,12 @@ function RoomShell({
   const togglePanel = (panel: SidePanel) => {
     setActivePanel((prev) => (prev === panel ? 'none' : panel));
   };
+
+  // Reset the unread badge whenever the chat panel is the visible one — including
+  // for messages that arrive while it's already open.
+  useEffect(() => {
+    if (activePanel === 'chat') chat.markSeen();
+  }, [activePanel, chat.messages.length, chat.markSeen]);
 
   return (
     <div className="vr-shell">
@@ -134,7 +141,7 @@ function RoomShell({
             />
           )}
           {activePanel === 'chat' && (
-            <RoomChat active onUnreadChange={setUnreadChat} onClose={() => setActivePanel('none')} />
+            <RoomChat messages={chat.messages} onSend={chat.sendMessage} onClose={() => setActivePanel('none')} />
           )}
         </aside>
       </div>
@@ -146,7 +153,7 @@ function RoomShell({
         onTogglePeople={() => togglePanel('people')}
         onToggleChat={() => togglePanel('chat')}
         participantCount={participants.length}
-        unreadChat={unreadChat}
+        unreadChat={chat.unread}
         onReact={react}
         onEndRoom={onRequestEndRoom}
         roomData={room}
@@ -155,16 +162,18 @@ function RoomShell({
         publicJoinCode={room.public_join_code ?? null}
         pip={pip}
       />
-      <RoomAudioRenderer />
     </div>
   );
 }
 
 /**
  * Always the sole child of <LiveKitRoom>, regardless of minimized/full — this is what lets
- * `useCallPip` hold onto its floating window across that switch. If the hook lived inside
- * RoomShell or MinimizedCallBar directly, toggling between them (which are mutually
- * exclusive) would unmount whichever held it and silently close an open PiP window.
+ * `useCallPip` hold onto its floating window across that switch, and lets chat history and
+ * remote audio survive it too. If any of these lived inside RoomShell or MinimizedCallBar
+ * directly, toggling between them (which are mutually exclusive) would unmount whichever
+ * held it: an open PiP window would silently close, chat messages would vanish, and — since
+ * RoomAudioRenderer is what actually plays back remote audio — minimizing would go silent
+ * even though the call itself is still connected.
  */
 function RoomInner({
   room,
@@ -192,21 +201,29 @@ function RoomInner({
   onReturnToRoom: () => void;
 }) {
   const pip = useCallPip(room);
+  const chat = useRoomChatChannel();
 
-  return minimized ? (
-    <MinimizedCallBar room={room} pip={pip} onReturn={onReturnToRoom} onLeave={onLeave} />
-  ) : (
-    <RoomShell
-      room={room}
-      canPublish={canPublish}
-      isModerator={isModerator}
-      churchName={churchName}
-      churchSlug={churchSlug}
-      churchLogoUrl={churchLogoUrl}
-      pip={pip}
-      onRequestEndRoom={onRequestEndRoom}
-      onRemoved={onRemoved}
-    />
+  return (
+    <>
+      {minimized ? (
+        <MinimizedCallBar room={room} pip={pip} onReturn={onReturnToRoom} onLeave={onLeave} />
+      ) : (
+        <RoomShell
+          room={room}
+          canPublish={canPublish}
+          isModerator={isModerator}
+          churchName={churchName}
+          churchSlug={churchSlug}
+          churchLogoUrl={churchLogoUrl}
+          pip={pip}
+          chat={chat}
+          onRequestEndRoom={onRequestEndRoom}
+          onRemoved={onRemoved}
+        />
+      )}
+      {/* Always mounted — remote audio must keep playing while minimized. */}
+      <RoomAudioRenderer />
+    </>
   );
 }
 

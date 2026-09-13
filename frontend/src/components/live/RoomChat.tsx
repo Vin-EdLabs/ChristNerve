@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Send, MessageCircle, X } from 'lucide-react';
 import { useDataChannel, useLocalParticipant } from '@livekit/components-react';
 
@@ -10,57 +10,68 @@ type ChatMsg = {
   self: boolean;
 };
 
-export interface RoomChatProps {
-  /** Whether this panel is the one currently open/visible. */
-  active: boolean;
-  onUnreadChange?: (count: number) => void;
-  onClose: () => void;
-}
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export function RoomChat({ active, onUnreadChange, onClose }: RoomChatProps) {
+/**
+ * Owns the chat history + data-channel subscription. Must live in a component that stays
+ * mounted across minimize/maximize and side-panel switches (RoomInner) — if it lived inside
+ * the chat panel itself, closing the panel (or minimizing the call) would unmount it and
+ * wipe the conversation, which is exactly the "message disappears when I switch and come
+ * back" bug this fixes.
+ */
+export function useRoomChatChannel() {
   const { localParticipant } = useLocalParticipant();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [draft, setDraft] = useState('');
-  const unreadRef = useRef(0);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [unread, setUnread] = useState(0);
   const idRef = useRef(0);
 
   const { send } = useDataChannel('chat', (msg) => {
     try {
       const payload = JSON.parse(decoder.decode(msg.payload)) as { body: string; from: string; at: number };
       setMessages((prev) => [...prev, { id: ++idRef.current, body: payload.body, from: payload.from, at: payload.at, self: false }]);
-      if (!active) {
-        unreadRef.current += 1;
-        onUnreadChange?.(unreadRef.current);
-      }
+      setUnread((u) => u + 1);
     } catch {
       /* ignore malformed */
     }
   });
 
-  useEffect(() => {
-    if (active) {
-      unreadRef.current = 0;
-      onUnreadChange?.(0);
-    }
-  }, [active, onUnreadChange]);
+  const markSeen = useCallback(() => setUnread(0), []);
+
+  const sendMessage = useCallback(
+    (body: string) => {
+      const at = Date.now();
+      const from = localParticipant?.name || 'You';
+      setMessages((prev) => [...prev, { id: ++idRef.current, body, from, at, self: true }]);
+      void send(encoder.encode(JSON.stringify({ body, from, at })), { reliable: true });
+    },
+    [localParticipant, send]
+  );
+
+  return { messages, unread, sendMessage, markSeen };
+}
+
+export interface RoomChatProps {
+  messages: ChatMsg[];
+  onSend: (body: string) => void;
+  onClose: () => void;
+}
+
+/** Purely presentational — the hook instance lives in RoomInner (see useRoomChatChannel). */
+export function RoomChat({ messages, onSend, onClose }: RoomChatProps) {
+  const [draft, setDraft] = useState('');
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, active]);
+  }, [messages]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const body = draft.trim();
     if (!body) return;
-    const at = Date.now();
-    const from = localParticipant?.name || 'You';
-    setMessages((prev) => [...prev, { id: ++idRef.current, body, from, at, self: true }]);
+    onSend(body);
     setDraft('');
-    void send(encoder.encode(JSON.stringify({ body, from, at })), { reliable: true });
   };
 
   return (
