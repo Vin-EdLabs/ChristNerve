@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { MapPin, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -41,6 +41,7 @@ const HERO =
 
 export default function MemberStorefront() {
   const { memberSlug } = useParams<{ memberSlug: string }>();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<StorefrontData | null>(null);
 
@@ -100,7 +101,7 @@ export default function MemberStorefront() {
       <div className="storefront">
         <div className="container" style={{ padding: '64px 24px', textAlign: 'center' }}>
           <h1>Storefront not found</h1>
-          <Link to="/market">Browse marketplace</Link>
+          <Link to="/visit">Visit church page</Link>
         </div>
       </div>
     );
@@ -109,6 +110,16 @@ export default function MemberStorefront() {
   const { member, church, listings } = data;
   const fullName = `${member.first_name} ${member.last_name}`.trim();
   const count = listings?.length || 0;
+  // The storefront API returns seller identity once at the top level, not per listing —
+  // but cart/quick-add need it on each item (e.g. to keep checkout scoped to this shop).
+  const enrichedListings = (listings || []).map((l) => ({
+    ...l,
+    first_name: l.first_name ?? member.first_name,
+    last_name: l.last_name ?? member.last_name,
+    marketplace_slug: l.marketplace_slug ?? member.marketplace_slug,
+    whatsapp: l.whatsapp || member.whatsapp || '',
+    phone: l.phone ?? member.phone,
+  }));
   const year = member.membership_date
     ? new Date(member.membership_date).getFullYear()
     : null;
@@ -160,9 +171,6 @@ export default function MemberStorefront() {
             <Link to="/market/cart" className="btn btn-primary">
               View cart / checkout
             </Link>
-            <Link to="/market" className="btn btn-outline storefront-hero-ghost">
-              Back to marketplace
-            </Link>
           </div>
         </div>
       </section>
@@ -180,8 +188,11 @@ export default function MemberStorefront() {
               </p>
             </div>
           </div>
-          {listings?.length ? (
-            <ListingGrid listings={listings} />
+          {enrichedListings.length ? (
+            <ListingGrid
+              listings={enrichedListings}
+              onListingClick={(listing) => navigate(`/shop/${memberSlug}/listing/${listing.slug}`)}
+            />
           ) : (
             <EmptyState title="No active listings yet." />
           )}
@@ -194,7 +205,7 @@ export default function MemberStorefront() {
             {[church.city, church.denomination].filter(Boolean).join(' · ')}
           </p>
           {church.tagline && <p className="storefront-tagline">{church.tagline}</p>}
-          <Link to="/visit" className="btn btn-primary">
+          <Link to={`/visit?shop=${memberSlug}`} className="btn btn-primary">
             Visit church page
           </Link>
         </section>

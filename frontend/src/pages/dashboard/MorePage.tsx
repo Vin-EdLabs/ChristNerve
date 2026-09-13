@@ -20,10 +20,9 @@ import {
   UsersRound,
   Wallet,
   Church,
-  Video,
   Radio,
+  MonitorPlay,
   BookOpen,
-  Newspaper,
   MessagesSquare,
   ClipboardList,
   TrendingUp,
@@ -40,10 +39,9 @@ type LinkItem = {
 };
 
 const STAFF_LINKS: LinkItem[] = [
-  { to: '/sermons', label: 'Sermons', icon: Video, desc: 'YouTube messages library' },
   { to: '/live', label: 'Live Stream', icon: Radio, desc: 'Go live for members' },
+  { to: '/live-rooms', label: 'Live Rooms', icon: MonitorPlay, desc: 'Video call rooms' },
   { to: '/devotionals', label: 'Devotionals', icon: BookOpen, desc: 'Daily word schedule' },
-  { to: '/bulletin', label: 'Bulletin', icon: Newspaper, desc: 'Sunday order of service' },
   { to: '/feed', label: 'Church Feed', icon: MessagesSquare, desc: 'Posts & reactions' },
   { to: '/sunday-report', label: 'Sunday Report', icon: ClipboardList, desc: 'Share to WhatsApp' },
   { to: '/growth', label: 'Growth', icon: TrendingUp, desc: 'Membership & giving trends' },
@@ -65,12 +63,12 @@ const STAFF_LINKS: LinkItem[] = [
 
 const MEMBER_LINKS: LinkItem[] = [
   { to: '/', label: 'Home', icon: Home, desc: 'Your church home' },
-  { to: '/sermons', label: 'Sermons', icon: Video, desc: 'Watch messages' },
   { to: '/live', label: 'Live Stream', icon: Radio, desc: 'Join when live' },
+  { to: '/live-rooms', label: 'Live Rooms', icon: MonitorPlay, desc: 'Video call rooms' },
   { to: '/devotionals', label: 'Devotionals', icon: BookOpen, desc: 'Today’s word' },
-  { to: '/bulletin', label: 'Bulletin', icon: Newspaper, desc: 'Order of service' },
   { to: '/feed', label: 'Church Feed', icon: MessagesSquare, desc: 'Amen, Love, Fire' },
   { to: '/my-department', label: 'My Department', icon: Network, desc: 'Team, roster & meetings' },
+  { to: '/my-cell-group', label: 'My Cell Group', icon: UsersRound, desc: 'Your group & members' },
   { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart, desc: 'Send prayer to pastors' },
   { to: '/welfare', label: 'Welfare', icon: HeartHandshake, desc: 'Request practical care' },
   { to: '/announcements', label: 'Announcements', icon: Megaphone, desc: 'Church notices' },

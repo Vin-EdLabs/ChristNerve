@@ -202,12 +202,16 @@ router.put('/prayer-requests/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const b = req.body;
     const prev = await pool.query(
-      `SELECT status, member_id, request FROM church_prayer_requests
+      `SELECT status, member_id, request, response FROM church_prayer_requests
        WHERE id = $1 AND church_id = $2`,
       [id, churchId]
     );
     if (!prev.rows.length) {
       res.status(404).json({ error: 'Not found' });
+      return;
+    }
+    if (b.status === 'answered' && !String(b.response || '').trim() && !String(prev.rows[0].response || '').trim()) {
+      res.status(400).json({ error: 'Enter a message to send the member before marking this answered' });
       return;
     }
     const result = await pool.query(
@@ -245,7 +249,8 @@ router.put('/prayer-requests/:id', async (req, res) => {
             : 'Your prayer is being lifted',
         body:
           b.status === 'answered'
-            ? 'The pastoral team marked your prayer request as answered.'
+            ? String(row.response || '').trim() ||
+              'The pastoral team marked your prayer request as answered.'
             : 'A pastor is praying with you — keep faith.',
         link: '/prayer-requests',
       });
@@ -589,6 +594,87 @@ router.get('/cell-groups', async (req, res) => {
   } catch (err) {
     console.error('List cell groups error:', err);
     res.status(500).json({ error: 'Failed to load cell groups' });
+  }
+});
+
+/**
+ * GET /api/pastoral/cell-groups/mine — member's own cell group(s) + roster.
+ * Must stay ahead of /cell-groups/:id so "mine" isn't swallowed as an :id param.
+ */
+router.get('/cell-groups/mine', async (req: Request, res: Response) => {
+  try {
+    const churchId = req.churchTenant!.id;
+    if (req.accountType !== 'member') {
+      res.status(403).json({ error: 'Members only' });
+      return;
+    }
+    const memberId = req.churchUser!.id;
+
+    const member = await pool.query(
+      `SELECT cell_group FROM church_members WHERE id = $1 AND church_id = $2`,
+      [memberId, churchId]
+    );
+    if (member.rows.length === 0) {
+      res.status(404).json({ error: 'Member not found' });
+      return;
+    }
+    const profile = member.rows[0];
+
+    let groups = await pool.query(
+      `SELECT g.*,
+              m.first_name AS leader_first_name,
+              m.last_name AS leader_last_name,
+              (SELECT COUNT(*)::int FROM church_cell_group_members x WHERE x.cell_group_id = g.id) AS member_count
+       FROM church_cell_group_members cm
+       JOIN church_cell_groups g ON g.id = cm.cell_group_id
+       LEFT JOIN church_members m ON m.id = g.leader_member_id
+       WHERE cm.member_id = $1 AND g.church_id = $2
+       ORDER BY g.name ASC`,
+      [memberId, churchId]
+    );
+
+    // Fallback: free-text cell_group name if the junction table has no row for them yet.
+    if (groups.rows.length === 0 && profile.cell_group) {
+      const fallback = await pool.query(
+        `SELECT g.*,
+                m.first_name AS leader_first_name,
+                m.last_name AS leader_last_name,
+                (SELECT COUNT(*)::int FROM church_cell_group_members x WHERE x.cell_group_id = g.id) AS member_count
+         FROM church_cell_groups g
+         LEFT JOIN church_members m ON m.id = g.leader_member_id
+         WHERE g.church_id = $1 AND g.name ILIKE $2
+         LIMIT 1`,
+        [churchId, String(profile.cell_group).split(',')[0].trim()]
+      );
+      groups = { ...fallback, rows: fallback.rows };
+    }
+
+    const cellGroups = [];
+    for (const g of groups.rows) {
+      const roster = await pool.query(
+        `SELECT m.id, m.first_name, m.last_name, m.avatar_url, m.phone, m.member_number
+         FROM church_cell_group_members cm
+         JOIN church_members m ON m.id = cm.member_id
+         WHERE cm.cell_group_id = $1 AND m.membership_status = 'active'
+         ORDER BY
+           CASE WHEN m.id = $2 THEN 0 ELSE 1 END,
+           m.last_name, m.first_name`,
+        [g.id, g.leader_member_id]
+      );
+      cellGroups.push({
+        ...g,
+        members: roster.rows,
+        is_leader: g.leader_member_id === memberId,
+      });
+    }
+
+    res.json({
+      cell_groups: cellGroups,
+      cell_group: cellGroups[0] || null,
+    });
+  } catch (err) {
+    console.error('My cell group error:', err);
+    res.status(500).json({ error: 'Failed to fetch your cell group' });
   }
 });
 

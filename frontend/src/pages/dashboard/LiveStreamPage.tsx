@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Play, Radio } from 'lucide-react';
+import { Radio } from 'lucide-react';
 
 import toast from 'react-hot-toast';
 
@@ -18,12 +18,12 @@ import { Spinner } from '../../components/ui/Spinner';
 
 import { canEditChurchMedia } from '../../utils/churchLife';
 import { LiveReactionBar } from '../../components/live/LiveReactionBar';
+import { LiveComments } from '../../components/live/LiveComments';
 
 import {
 
   extractYoutubeId,
   youtubeEmbedUrl,
-  youtubeThumbnail,
 
 } from '../../utils/youtube';
 
@@ -35,6 +35,13 @@ type LiveState = {
 
   live_stream_active?: boolean;
 
+};
+
+type PastStream = {
+  id: number;
+  youtube_url: string;
+  started_at: string;
+  ended_at: string;
 };
 
 
@@ -52,6 +59,10 @@ export default function LiveStreamPage() {
   const [url, setUrl] = useState('');
 
   const [active, setActive] = useState(false);
+
+  const [history, setHistory] = useState<PastStream[]>([]);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
 
 
 
@@ -81,13 +92,21 @@ export default function LiveStreamPage() {
 
   }, []);
 
-
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await api.get('/church-life/live/history');
+      setHistory(res.data?.data || []);
+    } catch {
+      /* history is a nice-to-have, fail quietly */
+    }
+  }, []);
 
   useEffect(() => {
 
     void load();
+    void loadHistory();
 
-  }, [load]);
+  }, [load, loadHistory]);
 
 
 
@@ -124,6 +143,8 @@ export default function LiveStreamPage() {
         data.live_stream_active ? 'Live is ON — members notified' : 'Saved'
 
       );
+
+      void loadHistory();
 
     } catch {
 
@@ -215,6 +236,8 @@ export default function LiveStreamPage() {
 
           />
 
+          <LiveComments churchId={Number(tenant?.id ?? 0)} active={active} />
+
         </section>
 
       ) : !canEdit ? (
@@ -297,7 +320,44 @@ export default function LiveStreamPage() {
 
       )}
 
-
+      {history.length > 0 && (
+        <section className="card glass-card live-history">
+          <button
+            type="button"
+            className="live-history-toggle"
+            onClick={() => setHistoryOpen((v) => !v)}
+          >
+            <span>Past broadcasts ({history.length})</span>
+            <span>{historyOpen ? '−' : '+'}</span>
+          </button>
+          {historyOpen && (
+            <ul className="live-history-list">
+              {history.map((h) => {
+                const started = new Date(h.started_at);
+                const ended = new Date(h.ended_at);
+                const durationMin = Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60000));
+                return (
+                  <li key={h.id}>
+                    <div>
+                      <strong>
+                        {started.toLocaleDateString('en-GH', { dateStyle: 'medium' })}
+                      </strong>
+                      <span className="live-history-meta">
+                        {started.toLocaleTimeString('en-GH', { hour: 'numeric', minute: '2-digit' })}
+                        {' · '}
+                        {durationMin} min
+                      </span>
+                    </div>
+                    <a href={h.youtube_url} target="_blank" rel="noreferrer" className="live-history-watch">
+                      Watch
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       <style>{`
 
@@ -550,6 +610,19 @@ export default function LiveStreamPage() {
         }
 
         .live-actions { display:flex; gap:10px; flex-wrap:wrap; }
+        .live-history { margin-top: 16px; padding: 0; overflow: hidden; }
+        .live-history-toggle {
+          width: 100%; display: flex; justify-content: space-between; align-items: center;
+          border: 0; background: transparent; padding: 16px; font-size: 14px; font-weight: 700;
+          cursor: pointer; color: inherit;
+        }
+        .live-history-list { list-style: none; margin: 0; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+        .live-history-list li {
+          display: flex; justify-content: space-between; align-items: center; gap: 12px;
+          padding: 10px 0; border-top: 1px solid var(--border, #e8e4dc);
+        }
+        .live-history-meta { display: block; font-size: 12px; opacity: .6; margin-top: 2px; }
+        .live-history-watch { font-size: 13px; font-weight: 600; color: var(--accent, #2d1b69); white-space: nowrap; }
 
       `}</style>
 

@@ -2,11 +2,32 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db';
 import { requireChurchAuth } from '../middleware/churchAuth';
 import { requireChurchTenant } from '../middleware/churchTenant';
-import { upload } from '../middleware/upload';
+import { uploadMarketImage } from '../middleware/upload';
+import { optimizeUploadedImage } from '../utils/imageOptimize';
 import { generateSlug } from '../utils/slug';
-import { notifyChurchBroadcast } from './notifications';
+import { notifyChurchBroadcast, notifyChurchUsers } from './notifications';
 
 const router = Router();
+
+function canApproveSellers(req: Request): boolean {
+  if (req.accountType === 'member') return false;
+  const role = String(req.churchUser?.role || '').toLowerCase();
+  return ['pastor', 'admin', 'super-admin', 'secretary'].includes(role);
+}
+
+async function uniqueMarketplaceSlug(base: string, excludeId?: number): Promise<string> {
+  let candidate = base || 'member';
+  let attempt = 0;
+  while (true) {
+    const slug = attempt === 0 ? candidate : `${candidate}-${attempt}`;
+    const result = await pool.query(
+      `SELECT id FROM church_members WHERE marketplace_slug = $1 ${excludeId ? 'AND id <> $2' : ''}`,
+      excludeId ? [slug, excludeId] : [slug]
+    );
+    if (result.rows.length === 0) return slug;
+    attempt += 1;
+  }
+}
 
 async function uniqueListingSlug(base: string, memberId: number): Promise<string> {
   let candidate = `${base}-${memberId}`;
@@ -57,6 +78,8 @@ router.get('/listings', async (req: Request, res: Response) => {
 
     const category = req.query.category as string | undefined;
     const search = (req.query.search as string) || '';
+    const listingType =
+      req.query.listing_type === 'professional' ? 'professional' : req.query.listing_type === 'product' ? 'product' : undefined;
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
     const limit = Math.min(
       48,
@@ -96,16 +119,16 @@ router.get('/listings', async (req: Request, res: Response) => {
       idx += 1;
     }
 
+    if (listingType) {
+      conditions.push(`l.listing_type = $${idx}`);
+      params.push(listingType);
+      idx += 1;
+    }
+
     const where = conditions.join(' AND ');
 
-    const countResult = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM market_listings l
-       LEFT JOIN market_categories c ON c.id = l.category_id
-       WHERE ${where}`,
-      params
-    );
-
+    // One round-trip instead of two — COUNT(*) OVER() rides along with the page
+    // of rows instead of running the WHERE clause against the table twice.
     const dataResult = await pool.query(
       `SELECT l.*,
               c.name AS category_name, c.slug AS category_slug, c.icon AS category_icon,
@@ -122,7 +145,8 @@ router.get('/listings', async (req: Request, res: Response) => {
               ) AS avg_rating,
               (
                 SELECT COUNT(*)::int FROM market_reviews r WHERE r.listing_id = l.id
-              ) AS review_count
+              ) AS review_count,
+              COUNT(*) OVER()::int AS total_count
        FROM market_listings l
        LEFT JOIN market_categories c ON c.id = l.category_id
        JOIN church_members m ON m.id = l.member_id
@@ -132,13 +156,16 @@ router.get('/listings', async (req: Request, res: Response) => {
       [...params, limit, offset]
     );
 
+    const total = dataResult.rows[0]?.total_count ?? 0;
+    const rows = dataResult.rows.map(({ total_count, ...row }) => row);
+
     res.json({
-      data: dataResult.rows,
+      data: rows,
       pagination: {
         page,
         limit,
-        total: countResult.rows[0].total,
-        totalPages: Math.ceil(countResult.rows[0].total / limit),
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
       },
     });
   } catch (err) {
@@ -425,6 +452,222 @@ router.get(
 );
 
 /**
+ * POST /api/market/seller-requests — member requests permission to sell
+ */
+router.post(
+  '/seller-requests',
+  requireChurchTenant,
+  requireChurchAuth,
+  async (req: Request, res: Response) => {
+    try {
+      if (req.accountType !== 'member') {
+        res.status(400).json({ error: 'Only members can request seller access' });
+        return;
+      }
+      const churchId = req.churchTenant!.id;
+      const memberId = req.churchUser!.id;
+
+      const existing = await pool.query(
+        'SELECT seller_status, first_name, last_name FROM church_members WHERE id = $1 AND church_id = $2',
+        [memberId, churchId]
+      );
+      if (existing.rows.length === 0) {
+        res.status(404).json({ error: 'Member not found' });
+        return;
+      }
+      if (existing.rows[0].seller_status === 'approved') {
+        res.json({ seller_status: 'approved' });
+        return;
+      }
+
+      const result = await pool.query(
+        `UPDATE church_members
+         SET seller_status = 'pending', seller_requested_at = NOW(),
+             seller_reviewed_at = NULL, seller_reviewed_by = NULL
+         WHERE id = $1
+         RETURNING seller_status`,
+        [memberId]
+      );
+
+      try {
+        const name = `${existing.rows[0].first_name} ${existing.rows[0].last_name}`.trim();
+        await notifyChurchUsers({
+          churchId,
+          userType: 'staff',
+          title: 'New seller request',
+          body: `${name} wants to sell on the marketplace — review their request.`,
+          link: '/market/seller-requests',
+        });
+      } catch (notifyErr) {
+        console.warn('Seller request notify failed:', notifyErr);
+      }
+
+      res.json({ seller_status: result.rows[0].seller_status });
+    } catch (err) {
+      console.error('Seller request error:', err);
+      res.status(500).json({ error: 'Failed to submit seller request' });
+    }
+  }
+);
+
+/**
+ * GET /api/market/seller-requests — staff-only list (default: pending)
+ */
+router.get(
+  '/seller-requests',
+  requireChurchTenant,
+  requireChurchAuth,
+  async (req: Request, res: Response) => {
+    try {
+      if (!canApproveSellers(req)) {
+        res.status(403).json({ error: 'Staff only' });
+        return;
+      }
+      const churchId = req.churchTenant!.id;
+      const status = String(req.query.status || 'pending');
+
+      const result = await pool.query(
+        `SELECT id, first_name, last_name, avatar_url, phone, whatsapp, department,
+                seller_status, seller_requested_at, seller_reviewed_at
+         FROM church_members
+         WHERE church_id = $1 AND seller_status = $2
+         ORDER BY seller_requested_at ASC NULLS LAST`,
+        [churchId, status]
+      );
+
+      res.json({ data: result.rows });
+    } catch (err) {
+      console.error('Seller requests list error:', err);
+      res.status(500).json({ error: 'Failed to fetch seller requests' });
+    }
+  }
+);
+
+/**
+ * PUT /api/market/seller-requests/:memberId — staff-only approve/reject
+ */
+router.put(
+  '/seller-requests/:memberId',
+  requireChurchTenant,
+  requireChurchAuth,
+  async (req: Request, res: Response) => {
+    try {
+      if (!canApproveSellers(req)) {
+        res.status(403).json({ error: 'Staff only' });
+        return;
+      }
+      const churchId = req.churchTenant!.id;
+      const memberId = parseInt(req.params.memberId, 10);
+      const status = String(req.body?.status || '');
+
+      if (Number.isNaN(memberId)) {
+        res.status(400).json({ error: 'Invalid member id' });
+        return;
+      }
+      if (!['approved', 'rejected'].includes(status)) {
+        res.status(400).json({ error: "status must be 'approved' or 'rejected'" });
+        return;
+      }
+
+      const result = await pool.query(
+        `UPDATE church_members
+         SET seller_status = $1, seller_reviewed_at = NOW(), seller_reviewed_by = $2
+         WHERE id = $3 AND church_id = $4
+         RETURNING id, first_name, last_name, seller_status, marketplace_slug`,
+        [status, req.churchUser!.id, memberId, churchId]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: 'Member not found' });
+        return;
+      }
+
+      // Every approved seller gets a storefront link — generate one now if they
+      // don't already have one (e.g. their name was never edited before).
+      if (status === 'approved' && !result.rows[0].marketplace_slug) {
+        const member = result.rows[0];
+        const slug = await uniqueMarketplaceSlug(
+          generateSlug(`${member.first_name} ${member.last_name}`),
+          member.id
+        );
+        await pool.query('UPDATE church_members SET marketplace_slug = $1 WHERE id = $2', [
+          slug,
+          member.id,
+        ]);
+        result.rows[0].marketplace_slug = slug;
+      }
+
+      try {
+        const member = result.rows[0];
+        await notifyChurchUsers({
+          churchId,
+          userType: 'member',
+          userId: member.id,
+          title: status === 'approved' ? 'You can now sell on the marketplace' : 'Seller request declined',
+          body:
+            status === 'approved'
+              ? 'Your request to sell on the marketplace was approved. You can create a listing now.'
+              : 'Your request to sell on the marketplace was not approved this time.',
+          link: status === 'approved' ? '/market/create' : '/market/my-listings',
+        });
+      } catch (notifyErr) {
+        console.warn('Seller decision notify failed:', notifyErr);
+      }
+
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error('Seller decision error:', err);
+      res.status(500).json({ error: 'Failed to update seller request' });
+    }
+  }
+);
+
+/**
+ * GET /api/market/my-storefront — member's own storefront slug, generated on first request
+ * if they're an approved seller and don't have one yet (covers sellers approved before
+ * storefront links existed).
+ */
+router.get(
+  '/my-storefront',
+  requireChurchTenant,
+  requireChurchAuth,
+  async (req: Request, res: Response) => {
+    try {
+      if (req.accountType !== 'member') {
+        res.status(400).json({ error: 'Members only' });
+        return;
+      }
+      const churchId = req.churchTenant!.id;
+      const memberId = req.churchUser!.id;
+
+      const member = await pool.query(
+        `SELECT id, first_name, last_name, seller_status, marketplace_slug
+         FROM church_members WHERE id = $1 AND church_id = $2`,
+        [memberId, churchId]
+      );
+      if (member.rows.length === 0) {
+        res.status(404).json({ error: 'Member not found' });
+        return;
+      }
+      const row = member.rows[0];
+      if (row.seller_status !== 'approved') {
+        res.json({ marketplace_slug: null, seller_status: row.seller_status });
+        return;
+      }
+      let slug = row.marketplace_slug;
+      if (!slug) {
+        slug = await uniqueMarketplaceSlug(generateSlug(`${row.first_name} ${row.last_name}`), row.id);
+        await pool.query('UPDATE church_members SET marketplace_slug = $1 WHERE id = $2', [slug, row.id]);
+      }
+      res.json({ marketplace_slug: slug, seller_status: row.seller_status });
+    } catch (err) {
+      console.error('My storefront error:', err);
+      res.status(500).json({ error: 'Failed to load your storefront link' });
+    }
+  }
+);
+
+/**
  * POST /api/market/listings — protected
  */
 router.post(
@@ -447,6 +690,7 @@ router.post(
         phone,
         is_featured,
       } = req.body;
+      const listingType = req.body.listing_type === 'professional' ? 'professional' : 'product';
 
       if (!title || !description || !whatsapp) {
         res.status(400).json({
@@ -458,6 +702,17 @@ router.post(
       let resolvedMemberId: number | null = null;
 
       if (req.accountType === 'member') {
+        const seller = await pool.query(
+          'SELECT seller_status FROM church_members WHERE id = $1 AND church_id = $2',
+          [req.churchUser!.id, churchId]
+        );
+        if (seller.rows[0]?.seller_status !== 'approved') {
+          res.status(403).json({
+            error: 'You need approval from a church admin before you can sell on the marketplace',
+            seller_status: seller.rows[0]?.seller_status || 'none',
+          });
+          return;
+        }
         resolvedMemberId = req.churchUser!.id;
       } else {
         resolvedMemberId = member_id ? parseInt(String(member_id), 10) : null;
@@ -481,12 +736,14 @@ router.post(
       const baseSlug = generateSlug(title) || 'listing';
       const slug = await uniqueListingSlug(baseSlug, listingMemberId);
 
+      // Professional listings (plumber, lawyer, mason, driver, etc.) are a portfolio
+      // of work, not a priced item — price fields are ignored for that type even if sent.
       const result = await pool.query(
         `INSERT INTO market_listings (
            church_id, member_id, category_id, title, description,
            price_min, price_max, price_label, location, whatsapp, phone,
-           is_featured, slug
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12,false),$13)
+           is_featured, slug, listing_type
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12,false),$13,$14)
          RETURNING *`,
         [
           churchId,
@@ -494,14 +751,15 @@ router.post(
           category_id || null,
           title,
           description,
-          price_min ?? null,
-          price_max ?? null,
-          price_label || null,
+          listingType === 'professional' ? null : (price_min ?? null),
+          listingType === 'professional' ? null : (price_max ?? null),
+          listingType === 'professional' ? null : (price_label || null),
           location || null,
           whatsapp,
           phone || null,
           is_featured !== undefined ? is_featured : null,
           slug,
+          listingType,
         ]
       );
 
@@ -570,6 +828,11 @@ router.put(
       }
 
       const b = req.body;
+      const nextListingType =
+        b.listing_type === 'professional' || b.listing_type === 'product'
+          ? b.listing_type
+          : cur.listing_type;
+      const isProfessional = nextListingType === 'professional';
 
       const result = await pool.query(
         `UPDATE market_listings SET
@@ -584,21 +847,23 @@ router.put(
            phone = $9,
            is_active = $10,
            is_featured = $11,
+           listing_type = $12,
            updated_at = NOW()
-         WHERE id = $12 AND church_id = $13
+         WHERE id = $13 AND church_id = $14
          RETURNING *`,
         [
           b.category_id !== undefined ? b.category_id : cur.category_id,
           b.title ?? cur.title,
           b.description ?? cur.description,
-          b.price_min !== undefined ? b.price_min : cur.price_min,
-          b.price_max !== undefined ? b.price_max : cur.price_max,
-          b.price_label !== undefined ? b.price_label : cur.price_label,
+          isProfessional ? null : b.price_min !== undefined ? b.price_min : cur.price_min,
+          isProfessional ? null : b.price_max !== undefined ? b.price_max : cur.price_max,
+          isProfessional ? null : b.price_label !== undefined ? b.price_label : cur.price_label,
           b.location !== undefined ? b.location : cur.location,
           b.whatsapp ?? cur.whatsapp,
           b.phone !== undefined ? b.phone : cur.phone,
           b.is_active !== undefined ? b.is_active : cur.is_active,
           b.is_featured !== undefined ? b.is_featured : cur.is_featured,
+          nextListingType,
           id,
           churchId,
         ]
@@ -675,7 +940,7 @@ router.post(
   '/listings/:id/images',
   requireChurchTenant,
   requireChurchAuth,
-  upload.array('images', 5),
+  uploadMarketImage.array('images', 5),
   async (req: Request, res: Response) => {
     try {
       const churchId = req.churchTenant!.id;
@@ -723,7 +988,13 @@ router.post(
       const inserted = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const imageUrl = `/uploads/church/${file.filename}`;
+        let filename = file.filename;
+        try {
+          filename = await optimizeUploadedImage(file.path);
+        } catch (err) {
+          console.warn('Market image optimize failed, keeping original:', err);
+        }
+        const imageUrl = `/uploads/church/${filename}`;
         const isPrimary = hasPrimary.rows.length === 0 && i === 0;
 
         const row = await pool.query(

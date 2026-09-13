@@ -25,15 +25,24 @@ function asList<T>(payload: unknown): T[] {
 }
 
 export const MarketTabBar: React.FC = () => {
-  const { count, openDrawer } = useCart();
+  const { count, openDrawer, singleSellerSlug } = useCart();
   const { pathname } = useLocation();
+  // Checking out a single seller's cart is that seller's storefront checkout —
+  // "Browse" and "Home" would otherwise dump the visitor into the full marketplace.
+  const shopScoped = pathname === '/market/cart' && Boolean(singleSellerSlug);
 
-  const tabs: Tab[] = [
-    { to: '/market', label: 'Browse', icon: Store, end: true },
-    { to: '/market/cart', label: 'Cart', icon: ShoppingCart },
-    { to: '/market/chat', label: 'Chat', icon: MessageCircle },
-    { to: '/', label: 'Home', icon: Home, end: true },
-  ];
+  const tabs: Tab[] = shopScoped
+    ? [
+        { to: `/shop/${singleSellerSlug}`, label: 'Shop', icon: Store },
+        { to: '/market/cart', label: 'Cart', icon: ShoppingCart },
+        { to: '/market/chat', label: 'Chat', icon: MessageCircle },
+      ]
+    : [
+        { to: '/market', label: 'Browse', icon: Store, end: true },
+        { to: '/market/cart', label: 'Cart', icon: ShoppingCart },
+        { to: '/market/chat', label: 'Chat', icon: MessageCircle },
+        { to: '/', label: 'Home', icon: Home, end: true },
+      ];
 
   const isTabActive = (to: string) => {
     if (to === '/') return false; // portal home is outside market shell

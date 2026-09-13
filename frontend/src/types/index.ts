@@ -77,6 +77,7 @@ export interface ChurchUser {
   cell_group?: string | null;
   membership_date?: string | null;
   is_verified?: boolean;
+  seller_status?: 'none' | 'pending' | 'approved' | 'rejected';
 }
 
 export interface ChurchMember {
@@ -260,6 +261,9 @@ export interface MarketListing {
   church_id: number;
   member_id: number;
   category_id?: number | null;
+  /** 'professional' = a service/trade profile (plumber, lawyer, mason, driver…) with
+   *  no price — just a description of their work and portfolio photos. */
+  listing_type?: 'product' | 'professional';
   title: string;
   description: string;
   price_min?: number | null;

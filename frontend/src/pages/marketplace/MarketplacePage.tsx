@@ -33,6 +33,14 @@ export default function MarketplacePage() {
   const [categories, setCategories] = useState<MarketCategory[]>([]);
   const [listings, setListings] = useState<MarketListing[]>([]);
   const category = params.get('category');
+  const listingType = params.get('type') === 'professional' ? 'professional' : 'product';
+
+  const setListingTypeFilter = (type: 'product' | 'professional') => {
+    const next = new URLSearchParams(params);
+    if (type === 'professional') next.set('type', 'professional');
+    else next.delete('type');
+    setParams(next, { replace: true });
+  };
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -82,6 +90,7 @@ export default function MarketplacePage() {
             church_slug: slug,
             category: category || undefined,
             search: query || undefined,
+            listing_type: listingType,
             page: pageNum,
             limit: 24,
           },
@@ -99,7 +108,7 @@ export default function MarketplacePage() {
         setLoadingMore(false);
       }
     },
-    [slug, category, query]
+    [slug, category, query, listingType]
   );
 
   useEffect(() => {
@@ -142,6 +151,23 @@ export default function MarketplacePage() {
       </section>
 
       <div className="container market-body" id="market-listings">
+        <div className="market-type-toggle">
+          <button
+            type="button"
+            className={`market-type-btn${listingType === 'product' ? ' active' : ''}`}
+            onClick={() => setListingTypeFilter('product')}
+          >
+            Products
+          </button>
+          <button
+            type="button"
+            className={`market-type-btn${listingType === 'professional' ? ' active' : ''}`}
+            onClick={() => setListingTypeFilter('professional')}
+          >
+            Professionals
+          </button>
+        </div>
+
         <CategoryFilter
           categories={categories}
           activeSlug={category}
@@ -150,8 +176,16 @@ export default function MarketplacePage() {
 
         {!loading && listings.length === 0 ? (
           <EmptyState
-            title="No listings yet. Encourage members to share their businesses."
-            description="When members list their shops, the whole congregation benefits."
+            title={
+              listingType === 'professional'
+                ? 'No professionals listed yet.'
+                : 'No listings yet. Encourage members to share their businesses.'
+            }
+            description={
+              listingType === 'professional'
+                ? 'When members add their trade or profession, they will show up here.'
+                : 'When members list their shops, the whole congregation benefits.'
+            }
           />
         ) : (
           <>

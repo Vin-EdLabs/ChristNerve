@@ -8,12 +8,15 @@ import {
   HandHeart,
   Heart,
   Megaphone,
-  Newspaper,
+  MessagesSquare,
+  MonitorPlay,
+  Network,
   Play,
   Radio,
   Settings,
+  ShoppingBag,
   Store,
-  Video,
+  UsersRound,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,6 +28,7 @@ import {
   extractYoutubeId,
   youtubeThumbnail,
 } from '../../utils/youtube';
+import { LiveNowCard } from '../../components/live/LiveNowCard';
 
 type HomePayload = {
   live?: { live_stream_url?: string | null; live_stream_active?: boolean };
@@ -150,6 +154,7 @@ export default function MemberHome() {
 
   return (
     <div className="member-home member-home--alive">
+      <LiveNowCard />
       <header className="mh-hero">
         <div className="mh-hero-media" aria-hidden>
           <img src={heroImg} alt="" className="mh-hero-img" />
@@ -163,6 +168,49 @@ export default function MemberHome() {
           <p className="mh-hero-sub">{dateLabel} · glad you are here</p>
         </div>
       </header>
+
+      <section className="dash-quick-actions">
+        <Link to="/live" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Radio size={20} /></span>
+          Live Stream
+        </Link>
+        <Link to="/live-rooms" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><MonitorPlay size={20} /></span>
+          Live Room
+        </Link>
+        <Link to="/my-department" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Network size={20} /></span>
+          Department
+        </Link>
+        <Link to="/my-cell-group" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><UsersRound size={20} /></span>
+          Cell Group
+        </Link>
+        <Link to="/prayer-requests" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><HandHeart size={20} /></span>
+          Prayer
+        </Link>
+        <Link to="/feed" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><MessagesSquare size={20} /></span>
+          Feed
+        </Link>
+        <Link to="/announcements" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Megaphone size={20} /></span>
+          Announcements
+        </Link>
+        <Link to="/market" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Store size={20} /></span>
+          Market
+        </Link>
+        <Link to="/market/my-listings" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><ShoppingBag size={20} /></span>
+          My Shop
+        </Link>
+        <Link to="/settings" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Settings size={20} /></span>
+          Settings
+        </Link>
+      </section>
 
       {live?.live_stream_active && liveId ? (
         <section className="mh-panel mh-live">
@@ -213,28 +261,6 @@ export default function MemberHome() {
           </p>
           <Link to="/devotionals" className="member-home-link">
             Read full devotion <ChevronRight size={14} />
-          </Link>
-        </section>
-      )}
-
-      {home.latest_bulletin && (
-        <section className="mh-panel">
-          <div className="member-home-card-head">
-            <Newspaper size={18} />
-            <h2>Sunday bulletin</h2>
-          </div>
-          <p className="mh-devotion-title">{home.latest_bulletin.title}</p>
-          <p className="member-home-meta">
-            {String(home.latest_bulletin.service_date || '').slice(0, 10)}
-          </p>
-          {home.latest_bulletin.order_of_service && (
-            <p className="member-home-desc">
-              {home.latest_bulletin.order_of_service.slice(0, 160)}
-              {home.latest_bulletin.order_of_service.length > 160 ? '…' : ''}
-            </p>
-          )}
-          <Link to="/bulletin" className="member-home-link">
-            Full bulletin <ChevronRight size={14} />
           </Link>
         </section>
       )}
@@ -331,42 +357,6 @@ export default function MemberHome() {
           </Link>
         </section>
       )}
-
-      <section className="mh-panel mh-links">
-        <h2>Also</h2>
-        <div className="member-home-action-row">
-          <Link to="/prayer-requests" className="mh-link">
-            <span className="mh-link-icon">
-              <HandHeart size={18} />
-            </span>
-            <span>Prayer</span>
-          </Link>
-          <Link to="/sermons" className="mh-link">
-            <span className="mh-link-icon">
-              <Video size={18} />
-            </span>
-            <span>Sermons</span>
-          </Link>
-          <Link to="/bulletin" className="mh-link">
-            <span className="mh-link-icon">
-              <Newspaper size={18} />
-            </span>
-            <span>Bulletin</span>
-          </Link>
-          <Link to="/market" className="mh-link">
-            <span className="mh-link-icon">
-              <Store size={18} />
-            </span>
-            <span>Market</span>
-          </Link>
-          <Link to="/settings" className="mh-link">
-            <span className="mh-link-icon">
-              <Settings size={18} />
-            </span>
-            <span>Settings</span>
-          </Link>
-        </div>
-      </section>
 
       <VideoWatchOverlay
         open={!!watch}

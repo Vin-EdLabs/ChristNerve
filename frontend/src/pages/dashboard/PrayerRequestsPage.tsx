@@ -43,6 +43,9 @@ export default function PrayerRequestsPage() {
     request: '',
     is_anonymous: false,
   });
+  const [answering, setAnswering] = useState<Prayer | null>(null);
+  const [answerText, setAnswerText] = useState('');
+  const [answerSaving, setAnswerSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +77,29 @@ export default function PrayerRequestsPage() {
       await load();
     } catch {
       toast.error('Could not update');
+    }
+  };
+
+  const submitAnswer = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!answering || !answerText.trim()) return;
+    setAnswerSaving(true);
+    try {
+      await api.put(`/pastoral/prayer-requests/${answering.id}`, {
+        status: 'answered',
+        response: answerText.trim(),
+      });
+      toast.success('Sent to the member');
+      setAnswering(null);
+      setAnswerText('');
+      await load();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || 'Could not update';
+      toast.error(msg);
+    } finally {
+      setAnswerSaving(false);
     }
   };
 
@@ -126,9 +152,11 @@ export default function PrayerRequestsPage() {
               : 'Care for your congregation through prayer.'}
           </p>
         </div>
-        <Button type="button" onClick={() => setOpen(true)}>
-          <Plus size={16} /> {isMember ? 'Send prayer request' : 'Add request'}
-        </Button>
+        {isMember && (
+          <Button type="button" onClick={() => setOpen(true)}>
+            <Plus size={16} /> Send prayer request
+          </Button>
+        )}
       </div>
 
       <div className="page-tabs">
@@ -200,7 +228,10 @@ export default function PrayerRequestsPage() {
                   {r.status !== 'answered' && (
                     <Button
                       size="sm"
-                      onClick={() => void update(r.id, { status: 'answered' })}
+                      onClick={() => {
+                        setAnswerText(r.response || '');
+                        setAnswering(r);
+                      }}
                     >
                       Mark answered
                     </Button>
@@ -267,6 +298,27 @@ export default function PrayerRequestsPage() {
         </form>
       </Modal>
 
+      <Modal
+        open={!!answering}
+        onClose={() => !answerSaving && setAnswering(null)}
+        title="Mark as answered"
+      >
+        <form onSubmit={submitAnswer} className="users-cred-form">
+          {answering && <p className="pastoral-answer-request">"{answering.request}"</p>}
+          <TextArea
+            label="Message to send the member"
+            value={answerText}
+            onChange={(e) => setAnswerText(e.target.value)}
+            required
+            rows={4}
+            placeholder="Share how God answered this prayer — this is sent straight to them."
+          />
+          <Button type="submit" loading={answerSaving} disabled={!answerText.trim()}>
+            Send &amp; mark answered
+          </Button>
+        </form>
+      </Modal>
+
       <style>{`
         .pastoral-list { display: flex; flex-direction: column; gap: 12px; }
         .pastoral-card { padding: 16px 18px; }
@@ -284,6 +336,11 @@ export default function PrayerRequestsPage() {
           border-radius: 10px;
         }
         .pastoral-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .pastoral-answer-request {
+          font-size: 13px; font-style: italic; color: var(--text-secondary);
+          background: var(--bg-secondary); padding: 10px 12px; border-radius: 10px;
+          margin: 0 0 4px;
+        }
         .prayer-status {
           display: inline-block;
           font-size: 12px;

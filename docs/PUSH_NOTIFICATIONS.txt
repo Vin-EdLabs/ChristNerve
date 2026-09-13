@@ -1,0 +1,323 @@
+CHRISTNERVE PUSH NOTIFICATIONS
+===============================
+
+A practical guide to setup, delivery, phone pop-ups, and troubleshooting.
+
+
+1. WHAT PUSH NOTIFICATIONS DO
+-----------------------------
+ChristNerve can notify church staff, members, and platform administrators about
+important activity such as:
+
+- Church announcements and broadcasts
+- Messages and marketplace activity
+- New church updates
+- Live-stream and ministry updates
+- Platform administration events
+
+A notification can appear as:
+
+- A pop-up/banner on the phone or computer
+- A sound or vibration, depending on device settings
+- A notification in the phone's notification tray
+- An unread count on the ChristNerve bell
+- An app icon badge when the device supports badges
+
+Push notifications are different from ordinary in-app notifications. An in-app
+notification is seen after opening ChristNerve. A push notification is delivered
+by the operating system even when the ChristNerve page is not currently open.
+
+
+2. HOW A NOTIFICATION TRAVELS
+------------------------------
+The delivery path is:
+
+  ChristNerve event
+       |
+       v
+  Notification saved in PostgreSQL
+       |
+       v
+  Firebase Cloud Messaging (FCM)
+       |
+       v
+  Registered browser/device token
+       |
+       v
+  Phone or computer operating system
+       |
+       v
+  System notification pop-up
+
+The browser receives a unique FCM device token after the user grants permission.
+ChristNerve stores that token against the signed-in church member, staff user, or
+super administrator. When a notification is created, the backend sends it to the
+matching token or to every registered device in the church audience.
+
+Invalid or expired tokens are removed automatically when Firebase reports that a
+device token is no longer registered.
+
+
+3. HOW IT POPS UP WHILE THE PHONE IS ASLEEP
+--------------------------------------------
+The important part is the service worker. ChristNerve registers `/sw.js` in the
+browser. This background worker can receive an FCM message without the web page
+being open in the foreground.
+
+When a message arrives in the background, the service worker:
+
+1. Reads the notification title, message, link, and badge count.
+2. Displays a system notification with `showNotification(...)`.
+3. Updates the app badge when the operating system supports it.
+4. Opens or focuses ChristNerve when the user taps the notification.
+
+Therefore, a locked or sleeping phone can still show a notification after the
+message reaches the phone. The phone does not need to keep the ChristNerve page
+open. The phone must, however, be able to receive push messages and must not be
+blocking them through permissions, battery restrictions, Focus mode, Do Not
+Disturb, Airplane mode, network loss, or an operating-system power policy.
+
+The operating system controls the final pop-up. ChristNerve cannot force a banner,
+sound, vibration, or wake-up when the user or device has disabled those features.
+
+
+4. WHAT THE USER MUST DO
+-------------------------
+A user must complete these steps on every phone, browser, or computer where they
+want notifications:
+
+1. Sign in to ChristNerve.
+2. Choose "Enable notifications" when the prompt appears.
+3. Select "Allow" in the browser permission dialog.
+4. Keep notifications enabled for the browser or installed ChristNerve app in
+   the phone's system settings.
+5. Allow sound, vibration, lock-screen display, or banners if those are wanted.
+
+The permission and device token belong to that particular device/browser. Enabling
+notifications on one phone does not automatically enable them on another phone.
+
+If the user previously selected "Block" or "Don't allow", permission must be
+changed manually in browser or phone settings before ChristNerve can register a
+new token.
+
+
+5. IPHONE / IPAD
+----------------
+Web Push on iPhone and iPad requires the ChristNerve website to be installed as a
+Home Screen web app.
+
+To enable it:
+
+1. Open ChristNerve in Safari.
+2. Tap Share.
+3. Tap "Add to Home Screen".
+4. Open ChristNerve from the new Home Screen icon.
+5. Sign in and enable notifications.
+6. Tap "Allow" when iOS asks for permission.
+
+The iPhone/iPad must support Web Push for Home Screen web apps. The ChristNerve
+prompt detects when an iPhone has not been installed and asks the user to complete
+these steps first.
+
+After installation, notifications can appear on the lock screen or in Notification
+Center according to the user's iOS settings. The user can control this at:
+
+  Settings > Notifications > ChristNerve
+
+On iOS, check that Lock Screen, Notification Center, Banners, Sounds, and Badges
+are enabled as desired. Focus modes and scheduled summaries can delay or group
+alerts.
+
+
+6. ANDROID
+-----------
+Android supports push notifications in supported browsers such as Chrome. The
+user can use ChristNerve in the browser or install it to the Home Screen for a
+more app-like experience.
+
+To check Android permissions:
+
+  Settings > Apps > Chrome (or ChristNerve) > Notifications
+
+Allow notifications and enable the desired notification categories, sound, pop-up,
+lock-screen, and badge options. Some Android manufacturers also have battery
+settings that restrict background activity. If notifications arrive late, remove
+ChristNerve or the browser from battery optimization restrictions where appropriate.
+
+
+7. DESKTOP COMPUTERS
+---------------------
+Chrome and Edge can display ChristNerve notifications even when the tab is not
+active. The computer must be connected to the internet, and browser notifications
+must be allowed.
+
+Check:
+
+- Browser site permissions for ChristNerve
+- Operating-system notification settings
+- Focus Assist, Do Not Disturb, or quiet-hours settings
+- Whether the browser is allowed to run in the background
+
+Chromium-based browsers may also show a dock or taskbar badge when supported.
+
+
+8. SERVER CONFIGURATION
+-----------------------
+Push requires all of the following in production:
+
+- HTTPS on the ChristNerve website
+- A Firebase project configured for Cloud Messaging
+- Firebase web application settings in the frontend
+- A Web Push certificate key (VAPID key)
+- Firebase Admin credentials on the backend
+- A working PostgreSQL `device_tokens` table
+- Browser notification permission from the user
+- A registered service worker at `/sw.js`
+
+Frontend environment values normally include:
+
+  VITE_FIREBASE_API_KEY=...
+  VITE_FIREBASE_AUTH_DOMAIN=...
+  VITE_FIREBASE_PROJECT_ID=...
+  VITE_FIREBASE_MESSAGING_SENDER_ID=...
+  VITE_FIREBASE_APP_ID=...
+  VITE_FIREBASE_VAPID_KEY=...
+
+The VAPID key may also be supplied to the backend so the frontend can resolve it
+from the public configuration endpoint:
+
+  FIREBASE_WEB_VAPID_KEY=...
+
+Backend Firebase Admin authentication can use either environment credentials:
+
+  FIREBASE_PROJECT_ID=...
+  FIREBASE_CLIENT_EMAIL=...
+  FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n..."
+
+or the service-account file configured by the deployment. Never commit private
+keys, service-account JSON files, or server keys to source control.
+
+The Firebase project must include the live ChristNerve domains in its authorized
+domain configuration. Push does not work reliably on plain HTTP; use HTTPS except
+for browser-local development scenarios supported by the browser.
+
+
+9. WHAT HAPPENS IN THE APP
+---------------------------
+When notifications are enabled:
+
+- `NotificationPrompt` requests permission after the user is signed in.
+- `enablePushNotifications()` checks browser support, iPhone installation,
+  Firebase configuration, VAPID configuration, and service-worker registration.
+- Firebase creates an FCM token for the browser/device.
+- The frontend posts the token to `/api/notifications/device-token` for church
+  users or the matching super-admin endpoint.
+- The backend saves the token in `device_tokens`.
+- The backend sends a notification through Firebase Admin when an event occurs.
+- `/sw.js` displays background notifications.
+- `NotificationBell` handles foreground messages and refreshes the in-app inbox.
+
+A notification link is included when available. Tapping the system notification
+navigates the existing ChristNerve window or opens a new one.
+
+
+10. TESTING A REAL DEVICE
+--------------------------
+Use this test after deployment:
+
+1. Open the live HTTPS ChristNerve site on the target phone.
+2. Sign in as a test member or staff user.
+3. Enable notifications and choose "Allow".
+4. Close the tab. On iPhone, leave the Home Screen app installed.
+5. Lock the phone or let the screen go to sleep.
+6. From Super Admin or the appropriate church notification workflow, send a test.
+7. Confirm the lock-screen or notification-tray alert appears.
+8. Tap the alert and confirm ChristNerve opens at the supplied link.
+9. Open ChristNerve and confirm the bell shows the unread notification.
+10. Mark it as read and confirm the unread count and app badge update.
+
+The notification health endpoint can be checked by an administrator:
+
+  GET /api/superadmin/notifications/health
+
+A healthy response should report `fcm_configured: true` and a non-zero device-token
+count after at least one device has enabled push notifications.
+
+
+11. TROUBLESHOOTING
+-------------------
+No permission prompt appears:
+
+- The user may have dismissed the ChristNerve prompt for the current session.
+- Browser permission may already be blocked or already granted.
+- Firebase web configuration may be incomplete.
+- On iPhone, install ChristNerve to the Home Screen first.
+
+Permission is allowed but no notification arrives:
+
+- Confirm the site is HTTPS.
+- Confirm the device has an internet connection.
+- Check that the correct church account is signed in.
+- Check browser and phone notification settings.
+- Check Focus, Do Not Disturb, battery saver, and battery optimization settings.
+- Confirm `/sw.js` is registered and not blocked by the browser.
+- Confirm the backend has Firebase Admin credentials.
+- Confirm the VAPID key belongs to the same Firebase project.
+- Check that the health endpoint reports Firebase as configured.
+
+Notification appears only after opening ChristNerve:
+
+- The foreground path is working, but background delivery may be blocked.
+- Check service-worker registration and browser permissions.
+- Check phone battery restrictions and background-data settings.
+- On iPhone, confirm ChristNerve was opened from the Home Screen icon, not only
+  from a Safari tab.
+
+Notifications arrive late:
+
+- Mobile operating systems may delay background work to save battery.
+- Android manufacturer power managers may restrict Chrome or the PWA.
+- iOS Focus modes and Notification Summary may group or delay alerts.
+- A weak connection or offline period can delay delivery.
+
+Duplicate notifications appear:
+
+- Check that only the unified `/sw.js` is active.
+- The legacy `firebase-messaging-sw.js` is designed to unregister itself.
+- Clear old site data and reload if an old service-worker registration remains.
+
+
+12. IMPORTANT LIMITS
+---------------------
+Push notifications are best-effort system alerts, not a guaranteed emergency
+communication channel. Delivery can be delayed or suppressed by:
+
+- No internet connection
+- Disabled browser or operating-system notifications
+- Focus / Do Not Disturb / quiet hours
+- Battery saver or background restrictions
+- An uninstalled app or cleared browser data
+- An expired or invalid device token
+- Unsupported browser or device
+- Firebase, hosting, or service-worker configuration errors
+
+For urgent pastoral or safety communication, use an additional channel such as
+phone calls, SMS, or an approved messaging group.
+
+
+13. SOURCE FILES
+----------------
+Main implementation files:
+
+  frontend/src/lib/firebase.ts
+  frontend/src/utils/pwa.ts
+  frontend/src/components/notifications/NotificationPrompt.tsx
+  frontend/src/components/notifications/NotificationBell.tsx
+  frontend/public/sw.js
+  backend/src/services/fcm.ts
+  backend/src/routes/notifications.ts
+  backend/src/routes/public.ts
+
+
+ChristNerve
+The Nerve System of Your Church.

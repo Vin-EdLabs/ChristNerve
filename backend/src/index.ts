@@ -27,6 +27,7 @@ import churchPageRoutes, { publicJoinHandler } from './routes/churchPage';
 import dashboardRoutes from './routes/dashboard';
 import pastoralRoutes from './routes/pastoral';
 import churchLifeRoutes from './routes/churchLife';
+import liveRoutes from './routes/live';
 
 dotenv.config();
 
@@ -124,6 +125,7 @@ app.use('/api/church-page', churchPageRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/pastoral', pastoralRoutes);
 app.use('/api/church-life', churchLifeRoutes);
+app.use('/api/live', liveRoutes);
 app.post('/api/public/church/:slug/join', publicJoinHandler);
 
 app.use('/api', (_req, res) => {

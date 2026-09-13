@@ -288,6 +288,27 @@ router.put('/live', async (req, res) => {
         body: `${churchName} — Join the live stream`,
         link: '/live',
       });
+      // New broadcast session — this is what "History" and comments attach to.
+      await pool.query(
+        `INSERT INTO church_livestream_sessions (church_id, youtube_url, started_at)
+         VALUES ($1, $2, NOW())`,
+        [churchId, nextUrl || '']
+      );
+    } else if (!nextActive && wasActive) {
+      await pool.query(
+        `UPDATE church_livestream_sessions
+         SET ended_at = NOW()
+         WHERE church_id = $1 AND ended_at IS NULL`,
+        [churchId]
+      );
+    } else if (nextActive && wasActive && nextUrl) {
+      // URL edited while already live — keep the open session's link current.
+      await pool.query(
+        `UPDATE church_livestream_sessions
+         SET youtube_url = $1
+         WHERE church_id = $2 AND ended_at IS NULL`,
+        [nextUrl, churchId]
+      );
     }
 
     await auditSafe(req, 'live.update', 'church_tenants', churchId, 'Updated live stream');
@@ -303,6 +324,96 @@ router.put('/live', async (req, res) => {
   } catch (err) {
     console.error('Live update error:', err);
     res.status(500).json({ error: 'Failed to update live stream' });
+  }
+});
+
+/** Past broadcasts — "History" tab under the live stream page. */
+router.get('/live/history', async (req, res) => {
+  try {
+    const churchId = req.churchTenant!.id;
+    const result = await pool.query(
+      `SELECT id, youtube_url, started_at, ended_at
+       FROM church_livestream_sessions
+       WHERE church_id = $1 AND ended_at IS NOT NULL
+       ORDER BY started_at DESC
+       LIMIT 30`,
+      [churchId]
+    );
+    res.json({ data: result.rows });
+  } catch (err) {
+    console.error('Live history error:', err);
+    res.status(500).json({ error: 'Failed to load live stream history' });
+  }
+});
+
+async function currentSessionId(churchId: number): Promise<number | null> {
+  const r = await pool.query(
+    `SELECT id FROM church_livestream_sessions
+     WHERE church_id = $1 AND ended_at IS NULL
+     ORDER BY started_at DESC LIMIT 1`,
+    [churchId]
+  );
+  return r.rows[0]?.id ?? null;
+}
+
+/** Comments on the currently-live broadcast — polling-friendly GET + socket push. */
+router.get('/live/comments', async (req, res) => {
+  try {
+    const churchId = req.churchTenant!.id;
+    const sessionId = await currentSessionId(churchId);
+    if (!sessionId) {
+      res.json({ data: [], session_id: null });
+      return;
+    }
+    const result = await pool.query(
+      `SELECT id, user_type, user_id, author_name, body, created_at
+       FROM church_livestream_comments
+       WHERE session_id = $1
+       ORDER BY created_at ASC
+       LIMIT 300`,
+      [sessionId]
+    );
+    res.json({ data: result.rows, session_id: sessionId });
+  } catch (err) {
+    console.error('Live comments list error:', err);
+    res.status(500).json({ error: 'Failed to load comments' });
+  }
+});
+
+router.post('/live/comments', async (req, res) => {
+  try {
+    const churchId = req.churchTenant!.id;
+    const body = String(req.body?.body || '').trim();
+    if (!body) {
+      res.status(400).json({ error: 'Comment cannot be empty' });
+      return;
+    }
+    if (body.length > 500) {
+      res.status(400).json({ error: 'Comment is too long (max 500 characters)' });
+      return;
+    }
+    const sessionId = await currentSessionId(churchId);
+    if (!sessionId) {
+      res.status(400).json({ error: 'The stream is not live right now' });
+      return;
+    }
+
+    const user = req.churchUser!;
+    const authorName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Someone';
+
+    const result = await pool.query(
+      `INSERT INTO church_livestream_comments (church_id, session_id, user_type, user_id, author_name, body)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, user_type, user_id, author_name, body, created_at`,
+      [churchId, sessionId, req.accountType === 'member' ? 'member' : 'staff', user.id, authorName, body]
+    );
+
+    const comment = result.rows[0];
+    io.to(`live:${churchId}`).emit('comment:new', comment);
+    res.status(201).json(comment);
+  } catch (err) {
+    console.error('Live comment post error:', err);
+    res.status(500).json({ error: 'Failed to post comment' });
   }
 });
 
@@ -1345,39 +1456,138 @@ router.get('/growth', async (req, res) => {
 
 /* ─── Birthdays ───────────────────────────────────────────── */
 
+/* ─── Birthdays & Celebrations Hub ────────────────────────── */
+
 router.get('/birthdays', async (req, res) => {
   try {
     const churchId = req.churchTenant!.id;
+    const daysAhead = parseInt(String(req.query.days || '14'), 10);
 
-    const birthdays = await pool.query(
-      `SELECT id, first_name, last_name, phone, whatsapp, date_of_birth
+    const membersRes = await pool.query(
+      `SELECT id, first_name, last_name, avatar_url, phone, whatsapp, email,
+              department, cell_group, date_of_birth, wedding_anniversary
        FROM church_members
        WHERE church_id = $1
-         AND date_of_birth IS NOT NULL
-         AND EXTRACT(MONTH FROM date_of_birth) = EXTRACT(MONTH FROM CURRENT_DATE)
-         AND EXTRACT(DAY FROM date_of_birth) = EXTRACT(DAY FROM CURRENT_DATE)
+         AND (date_of_birth IS NOT NULL OR wedding_anniversary IS NOT NULL)
        ORDER BY first_name, last_name`,
       [churchId]
     );
 
-    let anniversaries: unknown[] = [];
-    try {
-      const ann = await pool.query(
-        `SELECT id, first_name, last_name, phone, whatsapp, wedding_anniversary
-         FROM church_members
-         WHERE church_id = $1
-           AND wedding_anniversary IS NOT NULL
-           AND EXTRACT(MONTH FROM wedding_anniversary) = EXTRACT(MONTH FROM CURRENT_DATE)
-           AND EXTRACT(DAY FROM wedding_anniversary) = EXTRACT(DAY FROM CURRENT_DATE)
-         ORDER BY first_name, last_name`,
-        [churchId]
-      );
-      anniversaries = ann.rows;
-    } catch {
-      /* wedding_anniversary column may not exist yet */
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const todayBirthdays: any[] = [];
+    const upcomingBirthdays: any[] = [];
+    const todayAnniversaries: any[] = [];
+    const upcomingAnniversaries: any[] = [];
+
+    for (const member of membersRes.rows) {
+      if (member.date_of_birth) {
+        const dob = new Date(member.date_of_birth);
+        if (!isNaN(dob.getTime())) {
+          const dobMonth = dob.getMonth();
+          const dobDate = dob.getDate();
+          const birthYear = dob.getFullYear();
+
+          let nextBday = new Date(now.getFullYear(), dobMonth, dobDate);
+          if (nextBday < todayStart) {
+            nextBday = new Date(now.getFullYear() + 1, dobMonth, dobDate);
+          }
+
+          const diffMs = nextBday.getTime() - todayStart.getTime();
+          const daysUntil = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+          const turningAge = nextBday.getFullYear() - birthYear;
+          const monthNames = [
+            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+          ];
+          const dobFormatted = `${dobDate} ${monthNames[dobMonth]}`;
+
+          const item = {
+            id: member.id,
+            first_name: member.first_name,
+            last_name: member.last_name,
+            avatar_url: member.avatar_url,
+            phone: member.phone,
+            whatsapp: member.whatsapp,
+            email: member.email,
+            department: member.department,
+            cell_group: member.cell_group,
+            date_of_birth: member.date_of_birth,
+            dob_formatted: dobFormatted,
+            days_until: daysUntil,
+            turning_age: turningAge > 0 && turningAge < 120 ? turningAge : null,
+            is_today: daysUntil === 0,
+          };
+
+          if (daysUntil === 0) {
+            todayBirthdays.push(item);
+          } else if (daysUntil <= daysAhead) {
+            upcomingBirthdays.push(item);
+          }
+        }
+      }
+
+      if (member.wedding_anniversary) {
+        const ann = new Date(member.wedding_anniversary);
+        if (!isNaN(ann.getTime())) {
+          const annMonth = ann.getMonth();
+          const annDate = ann.getDate();
+          const annYear = ann.getFullYear();
+
+          let nextAnn = new Date(now.getFullYear(), annMonth, annDate);
+          if (nextAnn < todayStart) {
+            nextAnn = new Date(now.getFullYear() + 1, annMonth, annDate);
+          }
+
+          const diffMs = nextAnn.getTime() - todayStart.getTime();
+          const daysUntil = Math.round(diffMs / (1000 * 60 * 60 * 24));
+          const yearsMarried = nextAnn.getFullYear() - annYear;
+
+          const monthNames = [
+            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+          ];
+          const annFormatted = `${annDate} ${monthNames[annMonth]}`;
+
+          const item = {
+            id: member.id,
+            first_name: member.first_name,
+            last_name: member.last_name,
+            avatar_url: member.avatar_url,
+            phone: member.phone,
+            whatsapp: member.whatsapp,
+            department: member.department,
+            wedding_anniversary: member.wedding_anniversary,
+            anniversary_formatted: annFormatted,
+            days_until: daysUntil,
+            years_married: yearsMarried > 0 ? yearsMarried : null,
+            is_today: daysUntil === 0,
+          };
+
+          if (daysUntil === 0) {
+            todayAnniversaries.push(item);
+          } else if (daysUntil <= daysAhead) {
+            upcomingAnniversaries.push(item);
+          }
+        }
+      }
     }
 
-    res.json({ birthdays: birthdays.rows, anniversaries });
+    // Sort by days until
+    upcomingBirthdays.sort((a, b) => a.days_until - b.days_until);
+    upcomingAnniversaries.sort((a, b) => a.days_until - b.days_until);
+
+    res.json({
+      birthdays: [...todayBirthdays, ...upcomingBirthdays],
+      today: todayBirthdays,
+      upcoming: upcomingBirthdays,
+      anniversaries: [...todayAnniversaries, ...upcomingAnniversaries],
+      today_anniversaries: todayAnniversaries,
+      upcoming_anniversaries: upcomingAnniversaries,
+      days_range: daysAhead,
+    });
   } catch (err) {
     console.error('Birthdays error:', err);
     res.status(500).json({ error: 'Failed to load birthdays' });

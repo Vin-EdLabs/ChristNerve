@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
 import { io, Socket } from 'socket.io-client';
@@ -40,8 +40,6 @@ export function LiveReactionBar({ churchId, serviceId, active = false }: Props) 
   const socketRef = useRef<Socket | null>(null);
   const idRef = useRef(0);
 
-  const roomName = useMemo(() => `live:${churchId || 0}`, [churchId]);
-
   useEffect(() => {
     if (!churchId || !active) return;
 
@@ -54,7 +52,10 @@ export function LiveReactionBar({ churchId, serviceId, active = false }: Props) 
     });
 
     socketRef.current = socket;
-    socket.emit('join-live-room', roomName);
+    // The server does socket.join(`live:${churchId}`) itself — emitting the
+    // already-prefixed roomName here would join "live:live:5" and silently
+    // never receive the church's `live:5` broadcasts.
+    socket.emit('join-live-room', churchId);
 
     socket.on('reaction:update', (payload: ReactionCounts) => {
       if (!mounted) return;
@@ -71,7 +72,7 @@ export function LiveReactionBar({ churchId, serviceId, active = false }: Props) 
       socket.off('reaction:update');
       socket.disconnect();
     };
-  }, [active, churchId, roomName, serviceId]);
+  }, [active, churchId, serviceId]);
 
   const handleReaction = async (reaction: ReactionType) => {
     if (!churchId || !active) return;

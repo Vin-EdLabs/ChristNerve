@@ -104,15 +104,25 @@ export default function EditListingPage() {
     };
   }, [photos]);
 
+  const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
     const next: PreviewFile[] = [];
+    let oversized = 0;
     Array.from(list).forEach((file) => {
       if (!file.type.startsWith('image/')) return;
+      if (file.size > MAX_PHOTO_BYTES) {
+        oversized += 1;
+        return;
+      }
       if (existingImages.length + photos.length + next.length >= 5) return;
       next.push({ file, url: URL.createObjectURL(file) });
     });
-    if (next.length === 0) {
+    if (oversized > 0) {
+      toast.error(`${oversized} photo${oversized === 1 ? '' : 's'} over 15MB — pick a smaller file`);
+    }
+    if (next.length === 0 && oversized === 0) {
       toast.error('Add JPEG, PNG, or WebP images (max 5 total)');
       return;
     }

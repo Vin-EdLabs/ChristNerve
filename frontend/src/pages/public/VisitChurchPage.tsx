@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ChevronDown,
   Church,
@@ -109,6 +109,13 @@ function parseYoutubeUrls(raw?: string | null): string[] {
 
 export default function VisitChurchPage() {
   const slug = getChurchSlug() || 'pka';
+  const [searchParams] = useSearchParams();
+  // Arrived here from a member's storefront link (?shop=slug) — every "back to
+  // market" control on this page must return them to that shop, not the full
+  // marketplace with every member's listings.
+  const shopSlug = searchParams.get('shop');
+  const marketLink = shopSlug ? `/shop/${shopSlug}` : '/market';
+  const marketLabel = shopSlug ? 'Back to Shop' : 'Marketplace';
   const [loading, setLoading] = useState(true);
   const [church, setChurch] = useState<VisitChurch | null>(null);
   const [events, setEvents] = useState<VisitEvent[]>([]);
@@ -275,14 +282,14 @@ export default function VisitChurchPage() {
             <a href="#join" className="vp-topbar-link vp-topbar-link--join">
               Join
             </a>
-            <Link to="/market" className="vp-topbar-link vp-topbar-link--market">
+            <Link to={marketLink} className="vp-topbar-link vp-topbar-link--market">
               <Store size={15} />
-              Marketplace
+              {marketLabel}
             </Link>
           </nav>
 
           <div className="vp-topbar-actions">
-            <Link to="/market" className="vp-topbar-icon" aria-label="Marketplace">
+            <Link to={marketLink} className="vp-topbar-icon" aria-label={marketLabel}>
               <Store size={18} />
             </Link>
             <a href="#join" className="vp-topbar-cta">
@@ -328,8 +335,8 @@ export default function VisitChurchPage() {
                   View Upcoming Events
                 </a>
               )}
-              <Link to="/market" className="vp-btn vp-btn--ghost">
-                Browse Marketplace
+              <Link to={marketLink} className="vp-btn vp-btn--ghost">
+                {shopSlug ? 'Back to Shop' : 'Browse Marketplace'}
               </Link>
             </div>
           </div>
@@ -664,8 +671,8 @@ export default function VisitChurchPage() {
           <span>Powered by ChristNerve</span>
         </div>
         <div className="vp-footer-links">
-          <Link to="/market" className="vp-footer-login">
-            Back to Marketplace
+          <Link to={marketLink} className="vp-footer-login">
+            {shopSlug ? 'Back to Shop' : 'Back to Marketplace'}
           </Link>
           <Link to="/login" className="vp-footer-login">
             Member / Staff Sign In

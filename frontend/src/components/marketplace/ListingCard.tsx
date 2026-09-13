@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart } from 'lucide-react';
+import { Briefcase, Heart } from 'lucide-react';
 import type { MarketListing } from '../../types';
 import { formatPriceRange } from '../../utils/formatGHS';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
@@ -18,6 +18,7 @@ const PLACEHOLDER =
 export const ListingCard: React.FC<ListingCardProps> = ({ listing, onClick }) => {
   const navigate = useNavigate();
   const { addToBag } = useCart();
+  const isProfessional = listing.listing_type === 'professional';
   const price = formatPriceRange(
     listing.price_min,
     listing.price_max,
@@ -66,6 +67,11 @@ export const ListingCard: React.FC<ListingCardProps> = ({ listing, onClick }) =>
         {listing.is_featured && (
           <span className="listing-card-featured">Featured</span>
         )}
+        {isProfessional && (
+          <span className="listing-card-professional">
+            <Briefcase size={11} /> Professional
+          </span>
+        )}
         {listing.is_verified && (
           <div className="listing-card-verified">
             <VerifiedBadge />
@@ -81,14 +87,20 @@ export const ListingCard: React.FC<ListingCardProps> = ({ listing, onClick }) =>
           {listing.category_name || 'Marketplace'}
         </div>
         <h3 className="listing-card-title">{listing.title}</h3>
-        <div className="listing-card-price">{price}</div>
-        <button
-          type="button"
-          className="listing-quick-add"
-          onClick={handleAdd}
-        >
-          Quick add +
-        </button>
+        {isProfessional ? (
+          <div className="listing-card-view-profile">View profile →</div>
+        ) : (
+          <>
+            <div className="listing-card-price">{price}</div>
+            <button
+              type="button"
+              className="listing-quick-add"
+              onClick={handleAdd}
+            >
+              Quick add +
+            </button>
+          </>
+        )}
       </div>
     </article>
   );

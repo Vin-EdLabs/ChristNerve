@@ -89,7 +89,13 @@ async function main() {
     'migrate-market-chat-listing.sql',
     'migrate-pastoral-care.sql',
     'migrate-church-life.sql',
+    'migrate-live-rooms.sql',
+    'migrate-live-rooms-public.sql',
     'migrate-demo-market-20.sql',
+    'migrate-market-seller-approval.sql',
+    'migrate-market-perf-indexes.sql',
+    'migrate-livestream-comments-history.sql',
+    'migrate-market-professionals.sql',
   ];
 
   if (seedDemo) {

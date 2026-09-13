@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Check, Copy, Eye, Pencil, Plus, Store, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatGHS } from '../../utils/formatGHS';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { churchDomainUrl } from '../../utils/tenantHost';
 import type { MarketListing } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -35,8 +37,11 @@ function priceLabel(listing: MarketListing) {
 
 export default function MyListingsPage() {
   const navigate = useNavigate();
+  const { tenant } = useAuth();
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<MarketListing[]>([]);
+  const [storefrontSlug, setStorefrontSlug] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +58,23 @@ export default function MyListingsPage() {
 
   useEffect(() => {
     load();
+    api
+      .get('/market/my-storefront')
+      .then((res) => setStorefrontSlug(res.data?.marketplace_slug || null))
+      .catch(() => undefined);
   }, [load]);
+
+  const storefrontLink =
+    storefrontSlug && tenant?.slug ? churchDomainUrl(tenant.slug, `/shop/${storefrontSlug}`) : null;
+
+  const copyStorefrontLink = () => {
+    if (!storefrontLink) return;
+    void navigator.clipboard.writeText(storefrontLink).then(() => {
+      setCopied(true);
+      toast.success('Storefront link copied');
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   const handleDelete = async (listing: MarketListing) => {
     if (!window.confirm(`Remove “${listing.title}”?`)) return;
@@ -94,6 +115,25 @@ export default function MyListingsPage() {
           Create Listing
         </Link>
       </div>
+
+      {storefrontLink && (
+        <div className="my-storefront-card">
+          <span className="my-storefront-icon">
+            <Store size={18} />
+          </span>
+          <div className="my-storefront-info">
+            <strong>Your storefront</strong>
+            <span>Share this link — visitors see only your items, nobody else's.</span>
+          </div>
+          <div className="my-storefront-link-row">
+            <input readOnly value={storefrontLink} onFocus={(e) => e.target.select()} />
+            <Button variant="outline" size="sm" onClick={copyStorefrontLink}>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {listings.length === 0 ? (
         <EmptyState
@@ -192,6 +232,25 @@ export default function MyListingsPage() {
         .my-listings-sub a {
           color: var(--accent, #2d1b69);
           text-decoration: none;
+        }
+        .my-storefront-card {
+          display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+          padding: 14px 16px; border: 1px solid var(--border, #e8e4dc);
+          border-radius: 14px; background: var(--accent-light, #ede8fa);
+        }
+        .my-storefront-icon {
+          width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+          display: grid; place-items: center;
+          background: var(--bg-primary, #fff); color: var(--accent, #2d1b69);
+        }
+        .my-storefront-info { display: flex; flex-direction: column; gap: 2px; min-width: 180px; flex: 1; }
+        .my-storefront-info strong { font-size: 14px; }
+        .my-storefront-info span { font-size: 12px; color: var(--text-muted, #9e9893); }
+        .my-storefront-link-row { display: flex; gap: 8px; flex: 2; min-width: 240px; }
+        .my-storefront-link-row input {
+          flex: 1; min-width: 0; padding: 8px 12px; border-radius: 8px;
+          border: 1px solid var(--border, #e8e4dc); background: var(--bg-primary, #fff);
+          font-size: 12.5px; color: var(--text-secondary, #6b6560);
         }
         .my-listings-grid {
           display: grid;

@@ -121,10 +121,15 @@ export const CartDrawer: React.FC = () => {
             items.map((item) => {
               const phone = item.whatsapp || item.phone || null;
               const pretty = displayPhone(phone);
+              // Keep a storefront visitor's cart clicks inside that seller's shop —
+              // only fall back to the general listing page for a mixed/general cart.
+              const itemHref = item.sellerSlug
+                ? `/shop/${item.sellerSlug}/listing/${item.slug}`
+                : `/market/listing/${item.slug}`;
               return (
                 <article key={item.listingId} className="cart-drawer-item">
                   <Link
-                    to={`/market/listing/${item.slug}`}
+                    to={itemHref}
                     onClick={closeDrawer}
                     className="cart-drawer-thumb"
                   >
@@ -133,7 +138,7 @@ export const CartDrawer: React.FC = () => {
                   <div className="cart-drawer-item-main">
                     <div className="cart-drawer-item-top">
                       <Link
-                        to={`/market/listing/${item.slug}`}
+                        to={itemHref}
                         onClick={closeDrawer}
                         className="cart-drawer-item-name"
                       >

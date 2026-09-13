@@ -12,6 +12,7 @@ const TITLE_MAP: Record<string, string> = {
   '/members': 'Members',
   '/attendance': 'Attendance',
   '/my-department': 'My Department',
+  '/my-cell-group': 'My Cell Group',
   '/finance': 'Finance Dashboard',
   '/finance/giving': 'Giving',
   '/finance/expenses': 'Expenses',
@@ -24,12 +25,15 @@ const TITLE_MAP: Record<string, string> = {
   '/cell-groups': 'Cell Groups',
   '/sermons': 'Sermons',
   '/live': 'Live Stream',
+  '/live-rooms': 'Live Rooms',
+  '/live-rooms/create': 'Create Live Room',
   '/devotionals': 'Devotionals',
   '/bulletin': 'Sunday Bulletin',
   '/feed': 'Church Feed',
   '/sunday-report': 'Sunday Report',
   '/growth': 'Growth Dashboard',
   '/whatsapp-actions': 'WhatsApp Actions',
+  '/birthdays': 'Birthdays',
   '/settings': 'Settings',
   '/more': 'More',
   '/users': 'Users',
@@ -38,18 +42,22 @@ const TITLE_MAP: Record<string, string> = {
   '/market/my-listings': 'My Shop',
   '/market/create': 'Create Listing',
   '/market/orders': 'Orders',
+  '/market/seller-requests': 'Seller Requests',
 };
 
 const MEMBER_ALLOWED = [
   '/',
   '/my-department',
+  '/my-cell-group',
   '/my-attendance',
   '/sermons',
   '/live',
+  '/live-rooms',
   '/devotionals',
   '/bulletin',
   '/feed',
   '/whatsapp-actions',
+  '/birthdays',
   '/market/my-listings',
   '/market/create',
   '/market/edit',
@@ -71,6 +79,7 @@ const FINANCE_ALLOWED = [
 function resolveTitle(pathname: string): string {
   if (TITLE_MAP[pathname]) return TITLE_MAP[pathname];
   if (pathname.startsWith('/members/')) return 'Member Detail';
+  if (pathname.startsWith('/live-rooms/')) return 'Live Room';
   if (pathname.startsWith('/market/edit')) return 'Edit Listing';
   if (pathname.startsWith('/market')) return 'Marketplace';
   return 'ChristNerve';

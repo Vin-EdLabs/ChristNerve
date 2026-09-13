@@ -40,6 +40,13 @@ export const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
+/** Marketplace listing photos — members' phone photos run larger than 5MB. */
+export const uploadMarketImage = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
 /** Public URL path stored in DB for uploaded church files. */
 export function uploadedFilePublicUrl(file?: Express.Multer.File | null): string | null {
   if (!file?.filename) return null;

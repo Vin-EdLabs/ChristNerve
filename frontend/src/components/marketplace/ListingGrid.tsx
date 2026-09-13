@@ -12,6 +12,9 @@ export interface ListingGridProps {
   emptyDescription?: string;
   onEmptyAction?: () => void;
   emptyActionLabel?: string;
+  /** Overrides the default `/market/listing/:slug` navigation for every card —
+   *  used by storefront-scoped views so a click never leaves that seller's shop. */
+  onListingClick?: (listing: MarketListing) => void;
 }
 
 export const ListingGrid: React.FC<ListingGridProps> = ({
@@ -21,6 +24,7 @@ export const ListingGrid: React.FC<ListingGridProps> = ({
   emptyDescription = 'Encourage members to share their businesses.',
   onEmptyAction,
   emptyActionLabel,
+  onListingClick,
 }) => {
   if (loading) {
     return <SkeletonCard variant="listing" count={8} />;
@@ -41,7 +45,11 @@ export const ListingGrid: React.FC<ListingGridProps> = ({
   return (
     <div className="listing-grid">
       {listings.map((listing) => (
-        <ListingCard key={listing.id} listing={listing} />
+        <ListingCard
+          key={listing.id}
+          listing={listing}
+          onClick={onListingClick ? () => onListingClick(listing) : undefined}
+        />
       ))}
     </div>
   );

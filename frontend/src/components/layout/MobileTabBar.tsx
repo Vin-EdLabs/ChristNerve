@@ -5,9 +5,9 @@ import {
   Users,
   Wallet,
   Menu,
-  Video,
+  Radio,
+  MonitorPlay,
   MessagesSquare,
-  Newspaper,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../services/api';
@@ -26,7 +26,8 @@ function staffTabsForRole(role?: string | null): Tab[] {
   return [
     { to: '/', label: 'Home', icon: Home, end: true, badge: 'messages' },
     { to: '/members', label: 'Members', icon: Users },
-    { to: '/sermons', label: 'Sermons', icon: Video },
+    { to: '/live', label: 'Live Stream', icon: Radio },
+    { to: '/live-rooms', label: 'Live Room', icon: MonitorPlay },
     { to: '/finance', label: 'Finance', icon: Wallet },
     { to: '/more', label: 'More', icon: Menu },
   ];
@@ -34,9 +35,9 @@ function staffTabsForRole(role?: string | null): Tab[] {
 
 const MEMBER_TABS: Tab[] = [
   { to: '/', label: 'Home', icon: Home, end: true, badge: 'messages' },
-  { to: '/sermons', label: 'Sermons', icon: Video },
+  { to: '/live', label: 'Live Stream', icon: Radio },
+  { to: '/live-rooms', label: 'Live Room', icon: MonitorPlay },
   { to: '/feed', label: 'Feed', icon: MessagesSquare },
-  { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
   { to: '/more', label: 'More', icon: Menu },
 ];
 

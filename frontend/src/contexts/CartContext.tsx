@@ -31,6 +31,9 @@ export interface CartItem {
 interface CartContextValue {
   items: CartItem[];
   count: number;
+  /** Set only when every item in the bag came from the same seller — the checkout
+   *  flow uses this to stay inside that seller's shop instead of showing full-market nav. */
+  singleSellerSlug: string | null;
   drawerOpen: boolean;
   lastAddedTitle: string | null;
   lastAddedId: number | null;
@@ -209,11 +212,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     [items]
   );
 
+  // When every item in the bag came from the same seller, checkout is effectively
+  // that seller's storefront checkout — the market chrome should stay out of it.
+  const singleSellerSlug = useMemo(() => {
+    if (items.length === 0) return null;
+    const first = items[0].sellerSlug || null;
+    if (!first) return null;
+    return items.every((i) => i.sellerSlug === first) ? first : null;
+  }, [items]);
+
   return (
     <CartContext.Provider
       value={{
         items,
         count,
+        singleSellerSlug,
         drawerOpen,
         lastAddedTitle,
         lastAddedId,

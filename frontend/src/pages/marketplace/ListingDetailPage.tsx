@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { MapPin, MessageCircle, ShoppingCart } from 'lucide-react';
+import { Briefcase, MapPin, MessageCircle, MessageSquare, ShoppingCart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { formatGHS } from '../../utils/formatGHS';
@@ -8,6 +8,7 @@ import { resolveMediaUrl } from '../../utils/mediaUrl';
 import type { MarketListing } from '../../types';
 import { useCart } from '../../contexts/CartContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { buildWhatsAppUrl, buildListingWhatsAppMessage } from '../../utils/whatsapp';
 import { SellerCard } from '../../components/marketplace/SellerCard';
 import { ListingCard } from '../../components/marketplace/ListingCard';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
@@ -53,7 +54,10 @@ function priceLabel(listing: Pick<MarketListing, 'price_label' | 'price_min' | '
 }
 
 export default function ListingDetailPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, memberSlug } = useParams<{ slug: string; memberSlug?: string }>();
+  // Reached via /shop/:memberSlug/listing/:slug — a storefront-scoped view where
+  // every link (breadcrumb, "more from this seller") must stay inside that one shop.
+  const scoped = Boolean(memberSlug);
   const navigate = useNavigate();
   const { addToBag, checkoutListing } = useCart();
   const { isAuthenticated, user, accountType } = useAuth();
@@ -103,7 +107,9 @@ export default function ListingDetailPage() {
       <div className="listing-detail">
         <div className="container" style={{ padding: '64px 24px', textAlign: 'center' }}>
           <h1>Listing not found</h1>
-          <Link to="/market">Back to marketplace</Link>
+          <Link to={scoped ? `/shop/${memberSlug}` : '/market'}>
+            {scoped ? 'Back to shop' : 'Back to marketplace'}
+          </Link>
         </div>
       </div>
     );
@@ -120,6 +126,11 @@ export default function ListingDetailPage() {
   const sellerName = member
     ? `${member.first_name} ${member.last_name}`.trim()
     : 'Seller';
+  const isProfessional = listing.listing_type === 'professional';
+  const contactPhone = member?.whatsapp || member?.phone || listing.whatsapp || listing.phone || '';
+  const professionalWhatsAppUrl = contactPhone
+    ? buildWhatsAppUrl(contactPhone, buildListingWhatsAppMessage(sellerName, listing.title))
+    : null;
 
   const asCartListing: MarketListing = {
     ...(listing as MarketListing),
@@ -197,14 +208,24 @@ export default function ListingDetailPage() {
 
         <div className="listing-info">
           <p className="listing-breadcrumb">
-            <Link to="/market">Marketplace</Link>
+            {scoped ? (
+              <Link to={`/shop/${memberSlug}`}>{sellerName}&apos;s shop</Link>
+            ) : (
+              <Link to="/market">Marketplace</Link>
+            )}
             {' / '}
             {listing.category?.name ||
               (listing as MarketListing & { category_name?: string }).category_name ||
               'Listing'}
           </p>
           <h1>{listing.title}</h1>
-          <p className="listing-price">{priceLabel(listing)}</p>
+          {isProfessional ? (
+            <p className="listing-professional-tag">
+              <Briefcase size={15} /> Professional service
+            </p>
+          ) : (
+            <p className="listing-price">{priceLabel(listing)}</p>
+          )}
 
           {member && (
             <SellerCard
@@ -226,28 +247,53 @@ export default function ListingDetailPage() {
           )}
 
           <div className="listing-buy-actions">
-            <Button size="lg" onClick={() => addToBag(asCartListing)}>
-              <ShoppingCart size={18} />
-              Add to cart
-            </Button>
-            <Button size="lg" variant="outline" onClick={() => checkoutListing(asCartListing)}>
-              Go to checkout
-            </Button>
-            {!isOwnListing && canChat && (
-              <Button size="lg" variant="ghost" onClick={messageSeller}>
-                <MessageCircle size={18} />
-                Message seller
-              </Button>
-            )}
-            {!isOwnListing && !canChat && (
-              <p className="listing-privacy-note">
-                Guests can checkout and WhatsApp the seller. In-app chat is for church members after sign-in.
-              </p>
-            )}
-            {canChat && (
-              <p className="listing-privacy-note">
-                Chat goes only to the member who listed this product — they can reply in Messages / Orders.
-              </p>
+            {isProfessional ? (
+              <>
+                {professionalWhatsAppUrl && !isOwnListing && (
+                  <Button
+                    size="lg"
+                    onClick={() => window.open(professionalWhatsAppUrl, '_blank', 'noreferrer')}
+                  >
+                    <MessageSquare size={18} />
+                    WhatsApp {member?.first_name || 'them'}
+                  </Button>
+                )}
+                {!isOwnListing && canChat && (
+                  <Button size="lg" variant="outline" onClick={messageSeller}>
+                    <MessageCircle size={18} />
+                    Message in-app
+                  </Button>
+                )}
+                <p className="listing-privacy-note">
+                  This is a portfolio of their work, not an item to buy — reach out to discuss rates and availability.
+                </p>
+              </>
+            ) : (
+              <>
+                <Button size="lg" onClick={() => addToBag(asCartListing)}>
+                  <ShoppingCart size={18} />
+                  Add to cart
+                </Button>
+                <Button size="lg" variant="outline" onClick={() => checkoutListing(asCartListing)}>
+                  Go to checkout
+                </Button>
+                {!isOwnListing && canChat && (
+                  <Button size="lg" variant="ghost" onClick={messageSeller}>
+                    <MessageCircle size={18} />
+                    Message seller
+                  </Button>
+                )}
+                {!isOwnListing && !canChat && (
+                  <p className="listing-privacy-note">
+                    Guests can checkout and WhatsApp the seller. In-app chat is for church members after sign-in.
+                  </p>
+                )}
+                {canChat && (
+                  <p className="listing-privacy-note">
+                    Chat goes only to the member who listed this product — they can reply in Messages / Orders.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
@@ -274,7 +320,7 @@ export default function ListingDetailPage() {
                   )}
                 </div>
               </div>
-              <Link to="/visit" className="btn btn-outline">
+              <Link to={scoped ? `/visit?shop=${memberSlug}` : '/visit'} className="btn btn-outline">
                 Visit Our Church Page →
               </Link>
             </div>
@@ -319,6 +365,9 @@ export default function ListingDetailPage() {
                     whatsapp: item.whatsapp || member?.whatsapp || listing.whatsapp,
                     phone: item.phone || member?.phone || listing.phone,
                   }}
+                  onClick={
+                    scoped ? () => navigate(`/shop/${memberSlug}/listing/${item.slug}`) : undefined
+                  }
                 />
               ))}
             </div>
@@ -391,6 +440,12 @@ export default function ListingDetailPage() {
           font-family: var(--font-mono, 'JetBrains Mono', monospace);
           font-size: 22px;
           margin-bottom: 20px;
+        }
+        .listing-professional-tag {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+          color: var(--accent, #2d1b69); background: var(--accent-light, #ede8fa);
+          padding: 6px 12px; border-radius: 999px; margin-bottom: 20px; width: fit-content;
         }
         .listing-desc {
           font-size: 15px;

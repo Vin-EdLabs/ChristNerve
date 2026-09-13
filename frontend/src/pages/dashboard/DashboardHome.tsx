@@ -12,6 +12,9 @@ import {
   AlertTriangle,
   ChevronRight,
   Cake,
+  Receipt,
+  Calendar,
+  Megaphone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -20,8 +23,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import MemberHome from './MemberHome';
-import { asList } from '../../utils/churchLife';
 import { whatsappShareUrl } from '../../utils/youtube';
+import { LiveNowCard } from '../../components/live/LiveNowCard';
+import { MemberForm } from '../../components/members/MemberForm';
+import type { MemberFormValues } from '../../components/members/MemberForm';
+import { GivingForm } from '../../components/finance/GivingForm';
+import type { GivingFormValues } from '../../components/finance/GivingForm';
+import { ExpenseForm } from '../../components/finance/ExpenseForm';
+import type { ExpenseFormValues } from '../../components/finance/ExpenseForm';
 
 type DashPayload = {
   focus?: {
@@ -87,34 +96,18 @@ function timeAgo(iso?: string) {
 }
 
 function BirthdayWidget() {
-  const [birthdays, setBirthdays] = useState<
-    Array<{
-      id: number;
-      first_name: string;
-      last_name: string;
-      phone?: string | null;
-      whatsapp?: string | null;
-    }>
-  >([]);
-  const [anniversaries, setAnniversaries] = useState<
-    Array<{
-      id: number;
-      first_name: string;
-      last_name: string;
-      phone?: string | null;
-      whatsapp?: string | null;
-    }>
-  >([]);
+  const [todayList, setTodayList] = useState<any[]>([]);
+  const [upcomingList, setUpcomingList] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await api.get('/church-life/birthdays');
+        const res = await api.get('/church-life/birthdays?days=14');
         if (cancelled) return;
-        const d = res.data?.data || res.data || {};
-        setBirthdays(asList(d.birthdays));
-        setAnniversaries(asList(d.anniversaries));
+        const d = res.data || {};
+        setTodayList(d.today || []);
+        setUpcomingList(d.upcoming || []);
       } catch {
         /* optional widget */
       }
@@ -124,47 +117,84 @@ function BirthdayWidget() {
     };
   }, []);
 
-  const rows = [
-    ...birthdays.map((p) => ({ ...p, kind: 'Birthday' as const })),
-    ...anniversaries.map((p) => ({ ...p, kind: 'Anniversary' as const })),
-  ];
+  const totalCount = todayList.length + upcomingList.length;
 
-  if (!rows.length) {
-    return <p className="dash-muted">No birthdays or anniversaries today.</p>;
+  if (totalCount === 0) {
+    return (
+      <div className="space-y-2">
+        <p className="dash-muted text-xs">No birthdays today or in the next 14 days.</p>
+        <Link to="/birthdays" className="text-xs font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1">
+          <span>Open Birthdays & Media Hub</span>
+          <ChevronRight size={14} />
+        </Link>
+      </div>
+    );
   }
 
   return (
-    <ul className="dash-bday-list">
-      {rows.map((p) => {
-        const name = `${p.first_name} ${p.last_name}`.trim();
-        const wish =
-          p.kind === 'Birthday'
-            ? `Happy Birthday ${name}! 🎂 May God bless you abundantly this year. Love from your church family!`
-            : `Happy Anniversary ${name}! May God continue to bless your marriage. Love from your church family!`;
-        const phone = (p.whatsapp || p.phone || '').replace(/\D/g, '');
-        const href = phone
-          ? `https://wa.me/${phone}?text=${encodeURIComponent(wish)}`
-          : whatsappShareUrl(wish);
-        return (
-          <li key={`${p.kind}-${p.id}`}>
-            <div>
-              <Cake size={14} />
-              <strong>{name}</strong>
-              <span>{p.kind}</span>
-            </div>
-            <a href={href} target="_blank" rel="noreferrer" className="dash-inline-btn">
-              WhatsApp
-            </a>
-          </li>
-        );
-      })}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs font-semibold">
+        <span className="text-gray-600 dark:text-gray-400">
+          {todayList.length} Today • {upcomingList.length} Next 14 Days
+        </span>
+        <Link to="/birthdays" className="text-purple-600 hover:text-purple-700 dark:text-purple-400 flex items-center gap-1">
+          <span>Media Hub</span>
+          <ChevronRight size={13} />
+        </Link>
+      </div>
+
+      <ul className="dash-bday-list">
+        {todayList.map((p) => {
+          const name = `${p.first_name} ${p.last_name}`.trim();
+          const wish = `Happy Birthday ${name}! 🎂 May God bless you abundantly this year. Love from your church family!`;
+          const phone = (p.whatsapp || p.phone || '').replace(/\D/g, '');
+          const href = phone
+            ? `https://wa.me/${phone}?text=${encodeURIComponent(wish)}`
+            : whatsappShareUrl(wish);
+          return (
+            <li key={`today-${p.id}`} className="border-l-2 border-yellow-400 pl-2">
+              <div>
+                <Cake size={14} className="text-yellow-500" />
+                <strong>{name}</strong>
+                <span className="bg-yellow-100 text-yellow-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  TODAY! 🎉
+                </span>
+              </div>
+              <a href={href} target="_blank" rel="noreferrer" className="dash-inline-btn">
+                WhatsApp
+              </a>
+            </li>
+          );
+        })}
+
+        {upcomingList.slice(0, 4).map((p) => {
+          const name = `${p.first_name} ${p.last_name}`.trim();
+          const wish = `Hello ${name}! Early Birthday Blessings from your church family! Looking forward to your special day on ${p.dob_formatted}! 🙏✨`;
+          const phone = (p.whatsapp || p.phone || '').replace(/\D/g, '');
+          const href = phone
+            ? `https://wa.me/${phone}?text=${encodeURIComponent(wish)}`
+            : whatsappShareUrl(wish);
+          return (
+            <li key={`upcoming-${p.id}`}>
+              <div>
+                <Cake size={14} className="text-purple-400" />
+                <strong>{name}</strong>
+                <span className="text-xs text-gray-500">In {p.days_until}d ({p.dob_formatted})</span>
+              </div>
+              <a href={href} target="_blank" rel="noreferrer" className="dash-inline-btn">
+                WhatsApp
+              </a>
+            </li>
+          );
+        })}
+      </ul>
       <style>{`
         .dash-bday-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
         .dash-bday-list li { display:flex; justify-content:space-between; gap:10px; align-items:center; }
         .dash-bday-list li div { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
         .dash-bday-list span { opacity:.65; font-size:.8rem; }
       `}</style>
-    </ul>
+    </div>
   );
 }
 
@@ -183,6 +213,11 @@ function StaffDashboardHome() {
   const { user, tenant } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashPayload | null>(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [savingMember, setSavingMember] = useState(false);
+  const [givingOpen, setGivingOpen] = useState(false);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [savingFinance, setSavingFinance] = useState(false);
 
   const hour = new Date().getHours();
   const greeting =
@@ -225,6 +260,75 @@ function StaffDashboardHome() {
     };
   }, []);
 
+  const submitAddMember = async (formValues: MemberFormValues, avatarFile?: File | null) => {
+    setSavingMember(true);
+    try {
+      const { avatar_url: _a, ...rest } = formValues;
+      const res = await api.post('/members', rest);
+      const memberId = res.data?.id ?? res.data?.member?.id ?? res.data?.data?.id;
+      if (avatarFile && memberId) {
+        const fd = new FormData();
+        fd.append('avatar', avatarFile);
+        await api.post(`/members/${memberId}/avatar`, fd);
+      }
+      toast.success('Member added successfully');
+      setAddMemberOpen(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || 'Could not save member';
+      toast.error(msg);
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  const submitGiving = async (values: GivingFormValues) => {
+    setSavingFinance(true);
+    try {
+      await api.post('/finance/giving', {
+        member_id: values.member_id ? Number(values.member_id) : null,
+        giving_type: values.giving_type,
+        amount: Number(values.amount),
+        payment_method: values.payment_method,
+        mobile_money_ref: values.mobile_money_ref || undefined,
+        service_date: values.service_date,
+        notes: values.notes || undefined,
+      });
+      toast.success('Giving recorded successfully');
+      setGivingOpen(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || 'Could not record giving';
+      toast.error(msg);
+    } finally {
+      setSavingFinance(false);
+    }
+  };
+
+  const submitExpense = async (values: ExpenseFormValues) => {
+    setSavingFinance(true);
+    try {
+      await api.post('/finance/expenses', {
+        category: values.category,
+        description: values.description,
+        amount: Number(values.amount),
+        payment_method: values.payment_method,
+        expense_date: values.expense_date,
+      });
+      toast.success('Expense recorded');
+      setExpenseOpen(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || 'Could not record expense';
+      toast.error(msg);
+    } finally {
+      setSavingFinance(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="dash-home">
@@ -256,6 +360,7 @@ function StaffDashboardHome() {
 
   return (
     <div className="dash-home">
+      <LiveNowCard />
       <section className="dash-welcome-bar">
         <div>
           <h2>
@@ -270,6 +375,33 @@ function StaffDashboardHome() {
         <Link to="/attendance" className="dash-welcome-cta">
           <CalendarCheck size={16} />
           Record attendance
+        </Link>
+      </section>
+
+      <section className="dash-quick-actions">
+        <button type="button" className="dash-quick-action" onClick={() => setAddMemberOpen(true)}>
+          <span className="dash-quick-action-icon"><UserPlus size={18} /></span>
+          Add Member
+        </button>
+        <Link to="/attendance" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><CalendarCheck size={18} /></span>
+          Record Attendance
+        </Link>
+        <button type="button" className="dash-quick-action" onClick={() => setGivingOpen(true)}>
+          <span className="dash-quick-action-icon"><Wallet size={18} /></span>
+          Record Income
+        </button>
+        <button type="button" className="dash-quick-action" onClick={() => setExpenseOpen(true)}>
+          <span className="dash-quick-action-icon"><Receipt size={18} /></span>
+          Record Expense
+        </button>
+        <Link to="/events" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Calendar size={18} /></span>
+          Add Event
+        </Link>
+        <Link to="/announcements" className="dash-quick-action">
+          <span className="dash-quick-action-icon"><Megaphone size={18} /></span>
+          Announcement
         </Link>
       </section>
 
@@ -477,6 +609,27 @@ function StaffDashboardHome() {
           </section>
         </div>
       </div>
+
+      <MemberForm
+        open={addMemberOpen}
+        member={null}
+        onSubmit={submitAddMember}
+        loading={savingMember}
+        onClose={() => !savingMember && setAddMemberOpen(false)}
+      />
+      <GivingForm
+        open={givingOpen}
+        onClose={() => !savingFinance && setGivingOpen(false)}
+        members={[]}
+        onSubmit={submitGiving}
+        loading={savingFinance}
+      />
+      <ExpenseForm
+        open={expenseOpen}
+        onClose={() => !savingFinance && setExpenseOpen(false)}
+        onSubmit={submitExpense}
+        loading={savingFinance}
+      />
 
       <style>{`
         .dash-stats-grid {

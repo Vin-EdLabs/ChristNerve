@@ -14,14 +14,7 @@ export type GivingFormValues = {
   notes: string;
 };
 
-const GIVING_TYPES = [
-  'Tithe',
-  'Offering',
-  'Building Fund',
-  'Thanksgiving',
-  'Donation',
-  'Mission Fund',
-];
+const GIVING_TYPES = ['Tithe', 'Offering', 'Other'];
 
 const PAYMENT_METHODS = [
   'Cash',
@@ -94,10 +87,8 @@ export const GivingForm: React.FC<GivingFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!values.member_id) {
-      setError('Select a member');
-      return;
-    }
+    // Member is optional — a total offering collection has no single giver, only
+    // an individual tithe/donation needs one attributed if the church wants that record.
     if (!values.amount || Number(values.amount) <= 0) {
       setError('Enter a valid amount');
       return;
@@ -110,12 +101,12 @@ export const GivingForm: React.FC<GivingFormProps> = ({
     <Modal
       open={open}
       onClose={onClose}
-      title="Record Giving"
+      title="Record Income"
       subtitle="Fill in the details below"
       footer={
         <>
           <Button variant="primary" type="submit" form="giving-form" loading={loading}>
-            Record Giving
+            Record Income
           </Button>
           <Button variant="ghost" type="button" onClick={onClose}>
             Cancel
@@ -125,24 +116,8 @@ export const GivingForm: React.FC<GivingFormProps> = ({
     >
       <form id="giving-form" onSubmit={handleSubmit}>
         {error && <p className="form-error mb-16">{error}</p>}
-        <Input
-          label="Search Member"
-          value={memberSearch}
-          onChange={(e) => setMemberSearch(e.target.value)}
-          placeholder="Name or member number"
-        />
         <Select
-          label="Member"
-          value={values.member_id}
-          onChange={set('member_id')}
-          placeholder="Select member"
-          options={filtered.map((m) => ({
-            value: String(m.id),
-            label: `${m.first_name} ${m.last_name}${m.member_number ? ` (${m.member_number})` : ''}`,
-          }))}
-        />
-        <Select
-          label="Giving Type"
+          label="Income Type"
           value={values.giving_type}
           onChange={set('giving_type')}
           options={GIVING_TYPES.map((t) => ({ value: t, label: t }))}
@@ -155,6 +130,26 @@ export const GivingForm: React.FC<GivingFormProps> = ({
           value={values.amount}
           onChange={set('amount')}
           required
+        />
+        <p className="form-hint">
+          Attribute this to a member only if it's a personal gift — leave it blank for a total
+          collection (e.g. Sunday offering).
+        </p>
+        <Input
+          label="Search Member (optional)"
+          value={memberSearch}
+          onChange={(e) => setMemberSearch(e.target.value)}
+          placeholder="Name or member number"
+        />
+        <Select
+          label="Member (optional)"
+          value={values.member_id}
+          onChange={set('member_id')}
+          placeholder="No specific member — total collection"
+          options={filtered.map((m) => ({
+            value: String(m.id),
+            label: `${m.first_name} ${m.last_name}${m.member_number ? ` (${m.member_number})` : ''}`,
+          }))}
         />
         <Select
           label="Payment Method"

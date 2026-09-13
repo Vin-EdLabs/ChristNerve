@@ -172,7 +172,11 @@ export default function CartPage() {
                         <p className="cart-item-focus-label">Checking out</p>
                       )}
                       <Link
-                        to={`/market/listing/${item.slug}`}
+                        to={
+                          item.sellerSlug
+                            ? `/shop/${item.sellerSlug}/listing/${item.slug}`
+                            : `/market/listing/${item.slug}`
+                        }
                         className="cart-item-title"
                       >
                         {item.title}

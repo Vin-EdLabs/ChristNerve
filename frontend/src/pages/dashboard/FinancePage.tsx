@@ -1,6 +1,19 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
+} from 'recharts';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { formatGHS } from '../../utils/formatGHS';
@@ -18,7 +31,9 @@ import type { GivingFormValues } from '../../components/finance/GivingForm';
 import { ExpenseForm } from '../../components/finance/ExpenseForm';
 import type { ExpenseFormValues } from '../../components/finance/ExpenseForm';
 
-type Tab = 'dashboard' | 'tithes' | 'offerings' | 'income' | 'expenses' | 'reports';
+type Tab = 'dashboard' | 'income' | 'expenses' | 'reports';
+
+const PIE_COLORS = ['#b4562f', '#7c5cbf', '#2f9a6e', '#e8a33d', '#2f8fa9', '#c0447a'];
 
 function asList<T>(payload: unknown, keys: string[] = ['data']): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -59,8 +74,6 @@ export default function FinancePage() {
   const tabParam = searchParams.get('tab');
   const initialTab: Tab =
     tabParam === 'expenses' ||
-    tabParam === 'tithes' ||
-    tabParam === 'offerings' ||
     tabParam === 'income' ||
     tabParam === 'reports' ||
     tabParam === 'dashboard'
@@ -120,8 +133,6 @@ export default function FinancePage() {
   useEffect(() => {
     if (
       tabParam === 'expenses' ||
-      tabParam === 'tithes' ||
-      tabParam === 'offerings' ||
       tabParam === 'income' ||
       tabParam === 'reports' ||
       tabParam === 'dashboard'
@@ -155,15 +166,15 @@ export default function FinancePage() {
         res.data?.receipt_number || res.data?.data?.receipt_number;
       toast.success(
         receipt
-          ? `Giving recorded â€” Receipt #${receipt}`
-          : 'Giving recorded successfully'
+          ? `Income recorded — Receipt #${receipt}`
+          : 'Income recorded successfully'
       );
       setGivingOpen(false);
       await load();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error || 'Could not record giving';
+          ?.error || 'Could not record income';
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -249,7 +260,7 @@ export default function FinancePage() {
         <div>
           <h1 className="page-title">Church Treasury · {monthLabel}</h1>
           <p className="page-sub">
-            Tithes, offerings, other income, and expenses — clear and separate.
+            Income and expenses — clear and separate.
           </p>
         </div>
         <div className="finance-treasury-stats">
@@ -275,8 +286,6 @@ export default function FinancePage() {
         {(
           [
             ['dashboard', 'Overview'],
-            ['tithes', 'Tithes'],
-            ['offerings', 'Offerings'],
             ['income', 'Income'],
             ['expenses', 'Expenses'],
             ['reports', 'Reports'],
@@ -296,158 +305,109 @@ export default function FinancePage() {
       {tab === 'dashboard' && (
         <>
           <div className="finance-dashboard-shell">
-            <section className="glass-card finance-hero-panel">
-              <div>
-                <p className="finance-section-eyebrow">Treasury dashboard</p>
-                <h2 className="page-heading">A clear command view of ministry finances</h2>
-                <p className="finance-card-copy">
-                  Track giving, spending, and balance at a glance without losing the details.
-                </p>
+            <div className="finance-hero-metrics">
+              <div className="finance-metric-card">
+                <span>Income</span>
+                <strong>{formatGHS(incomeTotal)}</strong>
               </div>
-              <div className="finance-hero-metrics">
-                <div className="finance-metric-card">
-                  <span>Income</span>
-                  <strong>{formatGHS(incomeTotal)}</strong>
-                </div>
-                <div className="finance-metric-card">
-                  <span>Expenses</span>
-                  <strong>{formatGHS(expenseTotal)}</strong>
-                </div>
-                <div className="finance-metric-card finance-metric-card--accent">
-                  <span>Net</span>
-                  <strong>{formatGHS(netBalance)}</strong>
-                </div>
+              <div className="finance-metric-card">
+                <span>Expenses</span>
+                <strong>{formatGHS(expenseTotal)}</strong>
               </div>
-            </section>
-
-            <div className="finance-overview-grid">
-              <div className="glass-card finance-summary-card">
-                <span className="stat-card-label">Income snapshot</span>
-                <div className="stat-card-value" style={{ fontSize: 28 }}>
-                  {formatGHS(incomeTotal)}
-                </div>
-                <p className="finance-card-copy">This month’s giving across all streams.</p>
-              </div>
-              <div className="glass-card finance-summary-card">
-                <span className="stat-card-label">Expense snapshot</span>
-                <div className="stat-card-value" style={{ fontSize: 28 }}>
-                  {formatGHS(expenseTotal)}
-                </div>
-                <p className="finance-card-copy">Current ministry outflow and commitments.</p>
+              <div className="finance-metric-card finance-metric-card--accent">
+                <span>Net</span>
+                <strong>{formatGHS(netBalance)}</strong>
               </div>
             </div>
 
-            <div className="stats-row mb-24">
-              <div className="stat-card glass-card">
-                <span className="stat-card-label">Income by type</span>
-                <ul className="finance-mini-list">
-                  {incomeByType.slice(0, 4).map((r) => (
-                    <li key={r.label}>
-                      <span>{r.label}</span>
-                      <strong>{formatGHS(r.total)}</strong>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="stat-card glass-card">
-                <span className="stat-card-label">Expense categories</span>
-                <ul className="finance-mini-list">
-                  {expensesByCategory.slice(0, 4).map((r) => (
-                    <li key={r.label}>
-                      <span>{r.label}</span>
-                      <strong>{formatGHS(r.total)}</strong>
-                    </li>
-                  ))}
-                  {expensesByCategory.length === 0 && (
-                    <li>
-                      <span>No expenses yet</span>
-                    </li>
-                  )}
-                </ul>
-              </div>
+            <div className="finance-chart-grid">
+              <section className="glass-card finance-chart-card">
+                <div className="finance-chart-head">
+                  <div>
+                    <p className="finance-section-eyebrow">Income vs. Expenses</p>
+                    <h3 className="finance-chart-title">This month at a glance</h3>
+                  </div>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={[{ label: monthLabel, Income: incomeTotal, Expenses: expenseTotal }]}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip formatter={(v: number) => formatGHS(v)} />
+                    <Legend />
+                    <Bar dataKey="Income" fill="#2f9a6e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Expenses" fill="#b4562f" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </section>
             </div>
 
-            <div className="finance-toolbar">
-              <h2 className="page-heading">Quick actions</h2>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Button variant="primary" onClick={() => setGivingOpen(true)}>
-                  <Plus size={16} /> Record Giving
-                </Button>
-                <Button variant="outline" onClick={() => setExpenseOpen(true)}>
-                  <Plus size={16} /> Record Expense
-                </Button>
-              </div>
+            <div className="finance-section-grid">
+              <section className="glass-card finance-section-card">
+                <div className="finance-section-card-head">
+                  <p className="finance-section-eyebrow">Income</p>
+                  <h3 className="finance-detail-title">{formatGHS(incomeTotal)}</h3>
+                  <Button variant="outline" size="sm" onClick={() => setGivingOpen(true)}>
+                    <Plus size={14} /> Record Income
+                  </Button>
+                </div>
+                {incomeByType.length === 0 ? (
+                  <p className="finance-card-copy">No income recorded yet.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie
+                        data={incomeByType}
+                        dataKey="total"
+                        nameKey="label"
+                        innerRadius={40}
+                        outerRadius={70}
+                        paddingAngle={2}
+                      >
+                        {incomeByType.map((entry, i) => (
+                          <Cell key={entry.label} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatGHS(v)} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </section>
+
+              <section className="glass-card finance-section-card">
+                <div className="finance-section-card-head">
+                  <p className="finance-section-eyebrow">Expenses</p>
+                  <h3 className="finance-detail-title">{formatGHS(expenseTotal)}</h3>
+                  <Button variant="outline" size="sm" onClick={() => setExpenseOpen(true)}>
+                    <Plus size={14} /> Record Expense
+                  </Button>
+                </div>
+                {expensesByCategory.length === 0 ? (
+                  <p className="finance-card-copy">No expenses recorded yet.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie
+                        data={expensesByCategory}
+                        dataKey="total"
+                        nameKey="label"
+                        innerRadius={40}
+                        outerRadius={70}
+                        paddingAngle={2}
+                      >
+                        {expensesByCategory.map((entry, i) => (
+                          <Cell key={entry.label} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatGHS(v)} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </section>
             </div>
           </div>
-        </>
-      )}
-
-      {(tab === 'tithes' || tab === 'offerings') && (
-        <>
-          <div className="finance-toolbar">
-            <h2 className="page-heading">
-              {tab === 'tithes' ? 'Tithes' : 'Offerings'}
-            </h2>
-            <Button variant="primary" onClick={() => setGivingOpen(true)}>
-              <Plus size={16} />
-              Record Giving
-            </Button>
-          </div>
-          <section className="card glass-card">
-            {giving.filter((g) => {
-              const t = String(g.giving_type || '');
-              return tab === 'tithes' ? t === 'Tithe' : t === 'Offering';
-            }).length === 0 ? (
-              <EmptyState
-                title={`No ${tab} recorded yet.`}
-                actionLabel="Record Giving"
-                onAction={() => setGivingOpen(true)}
-              />
-            ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Member</th>
-                      <th>Type</th>
-                      <th>Amount</th>
-                      <th>Method</th>
-                      <th>Date</th>
-                      <th>Receipt</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {giving
-                      .filter((g) => {
-                        const t = String(g.giving_type || '');
-                        return tab === 'tithes' ? t === 'Tithe' : t === 'Offering';
-                      })
-                      .map((g) => (
-                        <tr key={g.id}>
-                          <td>
-                            {g.member_name ||
-                              (g.first_name
-                                ? `${g.first_name} ${g.last_name || ''}`
-                                : g.member_id
-                                  ? `Member #${g.member_id}`
-                                  : 'Anonymous')}
-                          </td>
-                          <td>{g.giving_type}</td>
-                          <td>{formatGHS(Number(g.amount))}</td>
-                          <td>{g.payment_method || '—'}</td>
-                          <td>
-                            {g.service_date
-                              ? new Date(g.service_date).toLocaleDateString('en-GH')
-                              : '—'}
-                          </td>
-                          <td>{g.receipt_number || '—'}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </>
       )}
 
@@ -456,14 +416,14 @@ export default function FinancePage() {
           <div className="finance-toolbar">
             <h2 className="page-heading">Income</h2>
             <Button variant="primary" onClick={() => setGivingOpen(true)}>
-              <Plus size={16} /> Record Giving
+              <Plus size={16} /> Record Income
             </Button>
           </div>
           <div className="finance-detail-grid">
             <section className="glass-card finance-detail-card">
               <p className="finance-section-eyebrow">This month</p>
               <h3 className="finance-detail-title">{formatGHS(incomeTotal)}</h3>
-              <p className="finance-card-copy">Total received across tithes, offerings, and other giving.</p>
+              <p className="finance-card-copy">Total received across tithe, offering, and other income.</p>
             </section>
             <section className="glass-card finance-detail-card">
               <p className="finance-section-eyebrow">By type</p>
@@ -583,33 +543,95 @@ export default function FinancePage() {
           <div className="finance-toolbar">
             <h2 className="page-heading">Reports</h2>
           </div>
-          <div className="finance-detail-grid">
-            <section className="glass-card finance-detail-card">
-              <p className="finance-section-eyebrow">Net balance</p>
-              <h3 className="finance-detail-title">{formatGHS(netBalance)}</h3>
-              <p className="finance-card-copy">Income minus expenses for the current month.</p>
+
+          <div className="finance-hero-metrics">
+            <div className="finance-metric-card">
+              <span>Income</span>
+              <strong>{formatGHS(incomeTotal)}</strong>
+            </div>
+            <div className="finance-metric-card">
+              <span>Expenses</span>
+              <strong>{formatGHS(expenseTotal)}</strong>
+            </div>
+            <div className="finance-metric-card finance-metric-card--accent">
+              <span>Net Balance</span>
+              <strong>{formatGHS(netBalance)}</strong>
+            </div>
+          </div>
+
+          <div className="finance-chart-grid">
+            <section className="glass-card finance-chart-card">
+              <div className="finance-chart-head">
+                <div>
+                  <p className="finance-section-eyebrow">Income vs. Expenses</p>
+                  <h3 className="finance-chart-title">{monthLabel}</h3>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={[{ label: monthLabel, Income: incomeTotal, Expenses: expenseTotal }]}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(v: number) => formatGHS(v)} />
+                  <Legend />
+                  <Bar dataKey="Income" fill="#2f9a6e" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="Expenses" fill="#b4562f" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </section>
-            <section className="glass-card finance-detail-card">
-              <p className="finance-section-eyebrow">Income</p>
-              <ul className="finance-mini-list">
-                {incomeByType.slice(0, 5).map((r) => (
-                  <li key={r.label}>
-                    <span>{r.label}</span>
-                    <strong>{formatGHS(r.total)}</strong>
-                  </li>
-                ))}
-              </ul>
+          </div>
+
+          <div className="finance-section-grid">
+            <section className="glass-card finance-section-card">
+              <p className="finance-section-eyebrow">Income by type</p>
+              {incomeByType.length === 0 ? (
+                <p className="finance-card-copy">No income recorded yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={incomeByType}
+                      dataKey="total"
+                      nameKey="label"
+                      innerRadius={45}
+                      outerRadius={78}
+                      paddingAngle={2}
+                    >
+                      {incomeByType.map((entry, i) => (
+                        <Cell key={entry.label} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatGHS(v)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </section>
-            <section className="glass-card finance-detail-card">
-              <p className="finance-section-eyebrow">Expenses</p>
-              <ul className="finance-mini-list">
-                {expensesByCategory.slice(0, 5).map((r) => (
-                  <li key={r.label}>
-                    <span>{r.label}</span>
-                    <strong>{formatGHS(r.total)}</strong>
-                  </li>
-                ))}
-              </ul>
+
+            <section className="glass-card finance-section-card">
+              <p className="finance-section-eyebrow">Expenses by category</p>
+              {expensesByCategory.length === 0 ? (
+                <p className="finance-card-copy">No expenses recorded yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={expensesByCategory}
+                      dataKey="total"
+                      nameKey="label"
+                      innerRadius={45}
+                      outerRadius={78}
+                      paddingAngle={2}
+                    >
+                      {expensesByCategory.map((entry, i) => (
+                        <Cell key={entry.label} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => formatGHS(v)} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </section>
           </div>
         </>
@@ -697,15 +719,13 @@ export default function FinancePage() {
           flex-direction: column;
           gap: 14px;
         }
-        .finance-hero-panel {
-          padding: 18px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          flex-wrap: wrap;
-          background: linear-gradient(135deg, rgba(180, 90, 40, 0.12), rgba(255,255,255,0.05));
-        }
+        .finance-chart-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+        .finance-chart-card { padding: 18px; }
+        .finance-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .finance-chart-title { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 600; }
+        .finance-section-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .finance-section-card { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+        .finance-section-card-head { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
         .finance-section-eyebrow {
           margin: 0 0 6px;
           font-size: 11px;
@@ -742,17 +762,6 @@ export default function FinancePage() {
         .finance-metric-card--accent {
           background: rgba(180, 90, 40, 0.16);
         }
-        .finance-overview-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 14px;
-        }
-        .finance-summary-card {
-          padding: 16px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
         .finance-card-copy {
           margin: 0;
           font-size: 13px;
@@ -786,14 +795,11 @@ export default function FinancePage() {
         .table-wrap { overflow-x: auto; }
         .mono { font-family: var(--font-mono); font-size: 13px; }
         @media (max-width: 720px) {
-          .finance-overview-grid,
-          .finance-detail-grid {
+          .finance-detail-grid,
+          .finance-section-grid {
             grid-template-columns: 1fr;
           }
           .finance-hero {
-            align-items: flex-start;
-          }
-          .finance-hero-panel {
             align-items: flex-start;
           }
         }

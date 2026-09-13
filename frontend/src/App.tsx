@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { CartProvider } from './contexts/CartContext';
+import { LiveCallProvider } from './contexts/LiveCallContext';
+import { ActiveCallOverlay } from './components/live/ActiveCallOverlay';
 import {
   churchDomainUrl,
   getChurchSlug,
@@ -32,6 +34,7 @@ import ChurchPageAdmin from './pages/dashboard/ChurchPageAdmin';
 import AuditPage from './pages/dashboard/AuditPage';
 import MyAttendancePage from './pages/dashboard/MyAttendancePage';
 import MyDepartmentPage from './pages/dashboard/MyDepartmentPage';
+import MyCellGroupPage from './pages/dashboard/MyCellGroupPage';
 import VisitChurchPage from './pages/public/VisitChurchPage';
 import PrayerRequestsPage from './pages/dashboard/PrayerRequestsPage';
 import FollowUpPage from './pages/dashboard/FollowUpPage';
@@ -45,6 +48,11 @@ import ChurchFeedPage from './pages/dashboard/ChurchFeedPage';
 import SundayReportPage from './pages/dashboard/SundayReportPage';
 import GrowthDashboardPage from './pages/dashboard/GrowthDashboardPage';
 import WhatsAppActionsPage from './pages/dashboard/WhatsAppActionsPage';
+import BirthdaysPage from './pages/dashboard/BirthdaysPage';
+import LiveRoomsPage from './pages/live/LiveRoomsPage';
+import CreateRoomPage from './pages/live/CreateRoomPage';
+import LiveRoomPage from './pages/live/LiveRoomPage';
+import PublicJoinPage from './pages/live/PublicJoinPage';
 import MarketplacePage from './pages/marketplace/MarketplacePage';
 import { Spinner } from './components/ui/Spinner';
 import { useAuth } from './contexts/AuthContext';
@@ -54,9 +62,11 @@ import MyListingsPage from './pages/marketplace/MyListingsPage';
 import CreateListingPage from './pages/marketplace/CreateListingPage';
 import EditListingPage from './pages/marketplace/EditListingPage';
 import VendorOrdersPage from './pages/marketplace/VendorOrdersPage';
+import SellerRequestsPage from './pages/marketplace/SellerRequestsPage';
 import CartPage from './pages/marketplace/CartPage';
 import ChatPage from './pages/marketplace/ChatPage';
 import { MarketLayout } from './components/layout/MarketLayout';
+import { StorefrontLayout } from './components/layout/StorefrontLayout';
 import SuperAdminLayout from './pages/superadmin/SuperAdminLayout';
 import SuperAdminDashboard from './pages/superadmin/SuperAdminDashboard';
 import SuperAdminChurches from './pages/superadmin/SuperAdminChurches';
@@ -158,6 +168,7 @@ function ChurchApp() {
       <AuthProvider>
         <BrowserRouter>
           <CartProvider>
+            <LiveCallProvider>
             <PersistChurchParam slug={slug} />
             <SplashScreen />
             <InstallPrompt />
@@ -166,6 +177,7 @@ function ChurchApp() {
               <Route path="/setup-credentials" element={<SetupCredentialsPage />} />
               <Route path="/visit" element={<VisitChurchPage />} />
               <Route path="/about" element={<VisitChurchPage />} />
+              <Route path="/join/:code" element={<PublicJoinPage />} />
 
               <Route path="/" element={<ChurchRoot />}>
                 <Route index element={<DashboardHome />} />
@@ -192,15 +204,21 @@ function ChurchApp() {
                 <Route path="sunday-report" element={<SundayReportPage />} />
                 <Route path="growth" element={<GrowthDashboardPage />} />
                 <Route path="whatsapp-actions" element={<WhatsAppActionsPage />} />
+                <Route path="birthdays" element={<BirthdaysPage />} />
+                <Route path="live-rooms" element={<LiveRoomsPage />} />
+                <Route path="live-rooms/create" element={<CreateRoomPage />} />
+                <Route path="live-rooms/:roomId" element={<LiveRoomPage />} />
                 <Route path="audit" element={<AuditPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="more" element={<MorePage />} />
                 <Route path="my-attendance" element={<MyAttendancePage />} />
                 <Route path="my-department" element={<MyDepartmentPage />} />
+                <Route path="my-cell-group" element={<MyCellGroupPage />} />
                 <Route path="market/my-listings" element={<MyListingsPage />} />
                 <Route path="market/create" element={<CreateListingPage />} />
                 <Route path="market/edit/:id" element={<EditListingPage />} />
                 <Route path="market/orders" element={<VendorOrdersPage />} />
+                <Route path="market/seller-requests" element={<SellerRequestsPage />} />
               </Route>
 
               <Route element={<MarketLayout />}>
@@ -209,12 +227,21 @@ function ChurchApp() {
                 <Route path="/market/cart" element={<CartPage />} />
                 <Route path="/market/chat" element={<ChatPage />} />
                 <Route path="/market/chat/:conversationId" element={<ChatPage />} />
-                <Route path="/shop/:memberSlug" element={<MemberStorefront />} />
               </Route>
+
+              {/* Deliberately outside MarketLayout — a member's storefront must never
+                  expose the general marketplace nav/tabs, only this seller's own items. */}
+              <Route element={<StorefrontLayout />}>
+                <Route path="/shop/:memberSlug" element={<MemberStorefront />} />
+                <Route path="/shop/:memberSlug/listing/:slug" element={<ListingDetailPage />} />
+              </Route>
+
               <Route path="/cart" element={<Navigate to="/market/cart" replace />} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            <ActiveCallOverlay />
+            </LiveCallProvider>
           </CartProvider>
         </BrowserRouter>
       </AuthProvider>

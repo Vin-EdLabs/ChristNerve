@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -18,14 +18,17 @@ import {
   HandHeart,
   UsersRound,
   Receipt,
-  Video,
   Radio,
   BookOpen,
-  Newspaper,
   MessagesSquare,
   ClipboardList,
   TrendingUp,
   MessageCircle,
+  Gift,
+  MonitorPlay,
+  LogOut,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
@@ -74,16 +77,16 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'Media & Content',
     items: [
-      { to: '/sermons', label: 'Sermons', icon: Video },
       { to: '/live', label: 'Live Stream', icon: Radio },
+      { to: '/live-rooms', label: 'Live Rooms', icon: MonitorPlay },
       { to: '/devotionals', label: 'Devotionals', icon: BookOpen },
-      { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
       { to: '/feed', label: 'Church Feed', icon: MessagesSquare },
     ],
   },
   {
     label: 'Communication',
     items: [
+      { to: '/birthdays', label: 'Birthdays', icon: Gift },
       { to: '/announcements', label: 'Announcements', icon: Megaphone },
       { to: '/events', label: 'Events', icon: Calendar },
       { to: '/church-page', label: 'Church Page', icon: Church },
@@ -102,6 +105,7 @@ const STAFF_SECTIONS: NavSection[] = [
     items: [
       { to: '/market', label: 'Browse Market', icon: Store },
       { to: '/market/my-listings', label: 'My Listings', icon: Store },
+      { to: '/market/seller-requests', label: 'Seller Requests', icon: UserCog },
     ],
   },
   {
@@ -137,12 +141,12 @@ const MEMBER_SECTIONS: NavSection[] = [
   {
     label: 'Church life',
     items: [
-      { to: '/sermons', label: 'Sermons', icon: Video },
       { to: '/live', label: 'Live Stream', icon: Radio },
+      { to: '/live-rooms', label: 'Live Rooms', icon: MonitorPlay },
       { to: '/devotionals', label: 'Devotionals', icon: BookOpen },
-      { to: '/bulletin', label: 'Bulletin', icon: Newspaper },
       { to: '/feed', label: 'Church Feed', icon: MessagesSquare },
       { to: '/my-department', label: 'My Department', icon: Network },
+      { to: '/my-cell-group', label: 'My Cell Group', icon: UsersRound },
       { to: '/announcements', label: 'Announcements', icon: Megaphone },
       { to: '/prayer-requests', label: 'Prayer Requests', icon: HandHeart },
       { to: '/welfare', label: 'Welfare', icon: HeartHandshake },
@@ -161,9 +165,22 @@ const MEMBER_SECTIONS: NavSection[] = [
   },
 ];
 
+const COLLAPSED_KEY = 'cn_sidebar_collapsed';
+const SIDEBAR_WIDTH_EXPANDED = '248px';
+const SIDEBAR_WIDTH_COLLAPSED = '76px';
+
 export const Sidebar: React.FC = () => {
   const { user, tenant, logout, accountType } = useAuth();
   const role = String(user?.role || '').toLowerCase();
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-width',
+      collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED
+    );
+    localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+  }, [collapsed]);
 
   const sections =
     accountType === 'member'
@@ -179,7 +196,7 @@ export const Sidebar: React.FC = () => {
   const logoSrc = resolveMediaUrl(tenant?.logo_url);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? ' is-collapsed' : ''}`}>
       <div className="sidebar-header">
         {logoSrc ? (
           <img src={logoSrc} alt="" className="sidebar-logo" />
@@ -203,6 +220,7 @@ export const Sidebar: React.FC = () => {
                 key={item.to + item.label}
                 to={item.to}
                 end={item.end}
+                title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   `sidebar-link${isActive ? ' active' : ''}`
                 }
@@ -216,6 +234,16 @@ export const Sidebar: React.FC = () => {
       </nav>
 
       <div className="sidebar-footer">
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+          <span>Collapse</span>
+        </button>
         <div className="sidebar-user">
           <div className="sidebar-avatar">{initials}</div>
           <div className="sidebar-user-meta">
@@ -225,8 +253,14 @@ export const Sidebar: React.FC = () => {
             <div className="sidebar-user-role">{user?.role || accountType}</div>
           </div>
         </div>
-        <button type="button" className="sidebar-signout" onClick={logout}>
-          Sign out
+        <button
+          type="button"
+          className="sidebar-signout"
+          onClick={logout}
+          title={collapsed ? 'Sign out' : undefined}
+        >
+          <LogOut size={15} />
+          <span>Sign out</span>
         </button>
       </div>
 
@@ -241,6 +275,30 @@ export const Sidebar: React.FC = () => {
           color: rgba(248, 247, 245, 0.45);
         }
         .sidebar-section:first-child .sidebar-section-label { margin-top: 8px; }
+
+        .sidebar-collapse-toggle {
+          display: flex; align-items: center; gap: 8px; width: 100%;
+          border: 1px solid rgba(255,255,255,.12); background: transparent;
+          color: rgba(248,247,245,.7); border-radius: var(--radius-sm);
+          padding: 8px; margin-bottom: 10px; font-size: 12px; font-weight: 600;
+          cursor: pointer; transition: background-color .15s ease, color .15s ease;
+        }
+        .sidebar-collapse-toggle:hover { background: rgba(255,255,255,.08); color: #fff; }
+        .sidebar-signout { display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+        .sidebar.is-collapsed { width: 76px; }
+        .sidebar.is-collapsed .sidebar-brand-text,
+        .sidebar.is-collapsed .sidebar-section-label,
+        .sidebar.is-collapsed .sidebar-link span,
+        .sidebar.is-collapsed .sidebar-collapse-toggle span,
+        .sidebar.is-collapsed .sidebar-signout span,
+        .sidebar.is-collapsed .sidebar-user-meta {
+          display: none;
+        }
+        .sidebar.is-collapsed .sidebar-header { justify-content: center; padding: 0 10px; }
+        .sidebar.is-collapsed .sidebar-link { justify-content: center; padding: 11px 8px; }
+        .sidebar.is-collapsed .sidebar-collapse-toggle { justify-content: center; }
+        .sidebar.is-collapsed .sidebar-user { justify-content: center; margin-bottom: 0; }
       `}</style>
     </aside>
   );

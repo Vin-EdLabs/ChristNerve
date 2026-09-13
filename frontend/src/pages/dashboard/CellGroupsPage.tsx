@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Plus, UsersRound } from 'lucide-react';
+import { Calendar, MapPin, Plus, Users, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,7 @@ import { Input, Select } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 type CellGroup = {
   id: number;
@@ -21,7 +22,7 @@ type CellGroup = {
   next_meeting_at?: string;
 };
 
-type MemberOpt = { id: number; first_name: string; last_name: string };
+type MemberOpt = { id: number; first_name: string; last_name: string; avatar_url?: string | null };
 
 function asList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -30,6 +31,10 @@ function asList<T>(payload: unknown): T[] {
     if (Array.isArray(d)) return d as T[];
   }
   return [];
+}
+
+function initialsOf(first?: string, last?: string): string {
+  return `${first?.[0] || ''}${last?.[0] || ''}`.toUpperCase() || '?';
 }
 
 export default function CellGroupsPage() {
@@ -118,14 +123,14 @@ export default function CellGroupsPage() {
   };
 
   return (
-    <div className="pastoral-page">
-      <div className="page-head" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h1 className="page-title">
-            <UsersRound size={22} style={{ verticalAlign: 'middle', marginRight: 8 }} />
-            Cell Groups
-          </h1>
-          <p className="page-sub">Small groups that keep the church family close.</p>
+    <div className="pastoral-page cg-page">
+      <div className="page-head">
+        <div className="page-head-icon">
+          <UsersRound size={22} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <h1 className="page-head-title">Cell Groups</h1>
+          <p className="page-head-sub">Small groups that keep the church family close.</p>
         </div>
         <Button type="button" onClick={() => setOpen(true)}>
           <Plus size={16} /> Add group
@@ -133,43 +138,64 @@ export default function CellGroupsPage() {
       </div>
 
       {loading ? (
-        <SkeletonCard />
+        <div className="cg-skeleton-row">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       ) : rows.length === 0 ? (
-        <EmptyState title="No cell groups yet" description="Create your first group." />
+        <EmptyState
+          icon={<UsersRound size={22} />}
+          title="No cell groups yet"
+          description="Create your first group."
+          actionLabel="Add group"
+          onAction={() => setOpen(true)}
+        />
       ) : (
         <div className="cell-grid">
-          {rows.map((g) => (
-            <article key={g.id} className="card cell-card">
-              <h3>{g.name}</h3>
-              <p>
-                Leader:{' '}
-                {(g.leader_first_name || g.leader_last_name)
-                  ? `${g.leader_first_name || ''} ${g.leader_last_name || ''}`.trim()
-                  : '—'}
-              </p>
-              <p>{g.member_count ?? 0} members</p>
-              {(g.meeting_day || g.meeting_time) && (
-                <p className="pastoral-meta">
-                  Meets {g.meeting_day || ''} {g.meeting_time || ''}
-                  {g.location ? ` · ${g.location}` : ''}
-                </p>
-              )}
-              {g.last_meeting_at && (
-                <p className="pastoral-meta">
-                  Last meeting:{' '}
-                  {new Date(g.last_meeting_at).toLocaleDateString('en-GH')}
-                </p>
-              )}
-              <div className="pastoral-actions">
-                <Button size="sm" variant="outline" onClick={() => void openDetail(g.id)}>
-                  View members
-                </Button>
-                <Button size="sm" onClick={() => void recordMeeting(g.id)}>
-                  Record meeting
-                </Button>
-              </div>
-            </article>
-          ))}
+          {rows.map((g) => {
+            const leaderName = (g.leader_first_name || g.leader_last_name)
+              ? `${g.leader_first_name || ''} ${g.leader_last_name || ''}`.trim()
+              : null;
+            return (
+              <article key={g.id} className="cell-card">
+                <div className="cell-card-top">
+                  <span className="cell-card-avatar">{initialsOf(g.leader_first_name, g.leader_last_name) || <UsersRound size={18} />}</span>
+                  <div className="cell-card-head">
+                    <h3>{g.name}</h3>
+                    <span className="cell-card-leader">{leaderName ? `Led by ${leaderName}` : 'No leader assigned'}</span>
+                  </div>
+                </div>
+
+                <div className="cell-card-meta">
+                  <span><Users size={13} /> {g.member_count ?? 0} members</span>
+                  {(g.meeting_day || g.meeting_time) && (
+                    <span>
+                      <Calendar size={13} /> {[g.meeting_day, g.meeting_time].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                  {g.location && (
+                    <span><MapPin size={13} /> {g.location}</span>
+                  )}
+                </div>
+
+                {g.last_meeting_at && (
+                  <p className="cell-card-last">
+                    Last meeting {new Date(g.last_meeting_at).toLocaleDateString('en-GH')}
+                  </p>
+                )}
+
+                <div className="pastoral-actions">
+                  <Button size="sm" variant="outline" onClick={() => void openDetail(g.id)}>
+                    View members
+                  </Button>
+                  <Button size="sm" onClick={() => void recordMeeting(g.id)}>
+                    Record meeting
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 
@@ -230,31 +256,69 @@ export default function CellGroupsPage() {
         title={detail?.name || 'Cell group'}
       >
         {(detail?.members || []).length === 0 ? (
-          <p className="pastoral-meta">No members linked yet.</p>
+          <EmptyState title="No members linked yet" description="Add members to this group from the members page." />
         ) : (
-          <ul className="cell-members">
-            {(detail?.members || []).map((m) => (
-              <li key={m.id}>
-                {m.first_name} {m.last_name}
-              </li>
-            ))}
-          </ul>
+          <div className="cg-roster">
+            {(detail?.members || []).map((m) => {
+              const img = resolveMediaUrl(m.avatar_url);
+              return (
+                <article key={m.id} className="cg-roster-card">
+                  {img ? <img src={img} alt="" /> : <span className="cg-roster-fallback">{initialsOf(m.first_name, m.last_name)}</span>}
+                  <strong>{m.first_name} {m.last_name}</strong>
+                </article>
+              );
+            })}
+          </div>
         )}
       </Modal>
 
       <style>{`
+        .cg-page { display: flex; flex-direction: column; gap: 18px; }
+        .cg-skeleton-row { display: flex; flex-direction: column; gap: 10px; }
         .cell-grid {
-          display: grid; gap: 12px;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          display: grid; gap: 14px;
+          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
         }
-        .cell-card { padding: 16px; }
-        .cell-card h3 { margin: 0 0 8px; font-size: 17px; }
-        .cell-card p { margin: 0 0 4px; font-size: 13px; }
-        .pastoral-meta { color: var(--text-muted); font-size: 12px !important; }
-        .pastoral-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-        .cell-members { list-style: none; margin: 0; padding: 0; }
-        .cell-members li {
-          padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px;
+        .cell-card {
+          padding: 16px; border-radius: var(--radius-md);
+          border: 1px solid var(--border); background: var(--bg-primary);
+          display: flex; flex-direction: column; gap: 12px;
+        }
+        .cell-card-top { display: flex; align-items: center; gap: 12px; }
+        .cell-card-avatar {
+          width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+          display: grid; place-items: center; background: var(--accent-light);
+          color: var(--accent); font-weight: 700; font-size: 14px;
+        }
+        .cell-card-head { min-width: 0; }
+        .cell-card-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+        .cell-card-leader { font-size: 12px; color: var(--text-muted); }
+        .cell-card-meta { display: flex; flex-direction: column; gap: 5px; }
+        .cell-card-meta span {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 12.5px; color: var(--text-secondary);
+        }
+        .cell-card-last { margin: 0; font-size: 11px; color: var(--text-muted); }
+        .pastoral-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+        .cg-roster {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px;
+        }
+        .cg-roster-card {
+          display: flex; align-items: center; gap: 10px;
+          border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+        }
+        .cg-roster-card img, .cg-roster-fallback {
+          width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+          background: var(--accent-light); color: var(--accent);
+          display: grid; place-items: center; font-weight: 700; font-size: 12px;
+          flex-shrink: 0;
+        }
+        .cg-roster-card strong { font-size: 13px; }
+        @media (max-width: 480px) {
+          .cell-grid { grid-template-columns: 1fr; }
+          .pastoral-actions { flex-direction: column; }
+          .pastoral-actions button { width: 100%; }
+          .cg-roster { grid-template-columns: 1fr; }
         }
       `}</style>
     </div>

@@ -492,7 +492,7 @@ router.get('/me', requireChurchAuth, async (req: Request, res: Response) => {
       const full = await pool.query(
         `SELECT username, member_role, credentials_set, phone, whatsapp, marketplace_slug,
                 department, ministry, cell_group, membership_date, is_verified,
-                avatar_url
+                avatar_url, seller_status
          FROM church_members WHERE id = $1`,
         [user.id]
       );
@@ -514,6 +514,7 @@ router.get('/me', requireChurchAuth, async (req: Request, res: Response) => {
         membership_date: row.membership_date || null,
         is_verified: Boolean(row.is_verified),
         avatar_url: row.avatar_url ?? (user as { avatar_url?: string }).avatar_url,
+        seller_status: row.seller_status || 'none',
       };
     }
 

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, ImagePlus, Trash2, Upload } from 'lucide-react';
+import { Briefcase, Camera, Clock, ImagePlus, ShoppingBag, Tag, Trash2, Upload, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ import type { MarketCategory, ChurchMember } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 function asList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -23,17 +24,20 @@ type PreviewFile = { file: File; url: string };
 
 export default function CreateListingPage() {
   const navigate = useNavigate();
-  const { user, accountType } = useAuth();
+  const { user, accountType, refreshProfile } = useAuth();
   const isMember = accountType === 'member';
+  const sellerStatus = user?.seller_status || 'none';
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [categories, setCategories] = useState<MarketCategory[]>([]);
   const [members, setMembers] = useState<ChurchMember[]>([]);
   const [photos, setPhotos] = useState<PreviewFile[]>([]);
+  const [listingType, setListingType] = useState<'product' | 'professional'>('product');
   const [form, setForm] = useState({
     member_id: '',
     category_id: '',
@@ -99,15 +103,25 @@ export default function CreateListingPage() {
     };
   }, [photos]);
 
+  const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
     const next: PreviewFile[] = [];
+    let oversized = 0;
     Array.from(list).forEach((file) => {
       if (!file.type.startsWith('image/')) return;
+      if (file.size > MAX_PHOTO_BYTES) {
+        oversized += 1;
+        return;
+      }
       if (photos.length + next.length >= 5) return;
       next.push({ file, url: URL.createObjectURL(file) });
     });
-    if (next.length === 0) {
+    if (oversized > 0) {
+      toast.error(`${oversized} photo${oversized === 1 ? '' : 's'} over 15MB — pick a smaller file`);
+    }
+    if (next.length === 0 && oversized === 0) {
       toast.error('Add JPEG, PNG, or WebP images (max 5)');
       return;
     }
@@ -147,11 +161,12 @@ export default function CreateListingPage() {
       const payload = {
         member_id: isMember ? undefined : Number(form.member_id),
         category_id: Number(form.category_id),
+        listing_type: listingType,
         title: form.title.trim(),
         description: form.description.trim(),
-        price_min: form.price_min ? Number(form.price_min) : null,
-        price_max: form.price_max ? Number(form.price_max) : null,
-        price_label: form.price_label.trim() || undefined,
+        price_min: listingType === 'professional' || !form.price_min ? null : Number(form.price_min),
+        price_max: listingType === 'professional' || !form.price_max ? null : Number(form.price_max),
+        price_label: listingType === 'professional' ? undefined : form.price_label.trim() || undefined,
         location: form.location.trim() || undefined,
         whatsapp: form.whatsapp.trim(),
       };
@@ -177,6 +192,48 @@ export default function CreateListingPage() {
     }
   };
 
+  const requestSellerAccess = async () => {
+    setRequesting(true);
+    try {
+      await api.post('/market/seller-requests');
+      await refreshProfile();
+      toast.success('Request sent — an admin will review it soon');
+    } catch {
+      toast.error('Could not send your request');
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  if (isMember && sellerStatus !== 'approved') {
+    if (sellerStatus === 'pending') {
+      return (
+        <div className="create-listing">
+          <EmptyState
+            icon={<Clock size={22} style={{ color: 'var(--accent)' }} />}
+            title="Request pending"
+            description="Your request to sell on the marketplace is waiting on an admin's approval."
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="create-listing">
+        <EmptyState
+          icon={sellerStatus === 'rejected' ? <XCircle size={22} style={{ color: '#e05a4e' }} /> : <ShoppingBag size={22} style={{ color: 'var(--accent)' }} />}
+          title={sellerStatus === 'rejected' ? 'Request declined' : 'Become a seller'}
+          description={
+            sellerStatus === 'rejected'
+              ? "Your request wasn't approved this time. You can send another one."
+              : 'Ask a church admin for permission before you can list items for sale.'
+          }
+          actionLabel={requesting ? 'Sending…' : 'Request to sell'}
+          onAction={requesting ? undefined : requestSellerAccess}
+        />
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="create-listing">
@@ -189,6 +246,28 @@ export default function CreateListingPage() {
     <div className="create-listing">
       <h2 className="page-heading">Create Listing</h2>
       <form className="card create-form" onSubmit={handleSubmit}>
+        <label className="label">What are you listing?</label>
+        <div className="listing-type-toggle">
+          <button
+            type="button"
+            className={`listing-type-btn${listingType === 'product' ? ' active' : ''}`}
+            onClick={() => setListingType('product')}
+          >
+            <Tag size={16} />
+            <span>Item for sale</span>
+            <small>Has a price</small>
+          </button>
+          <button
+            type="button"
+            className={`listing-type-btn${listingType === 'professional' ? ' active' : ''}`}
+            onClick={() => setListingType('professional')}
+          >
+            <Briefcase size={16} />
+            <span>Professional service</span>
+            <small>Plumber, lawyer, mason, driver…</small>
+          </button>
+        </div>
+
         {!isMember && (
           <>
             <label className="label">Member / Seller</label>
@@ -234,16 +313,18 @@ export default function CreateListingPage() {
         </select>
 
         <Input
-          label="Title"
+          label={listingType === 'professional' ? 'Your trade / profession' : 'Title'}
           value={form.title}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
             setForm((f) => ({ ...f, title: e.target.value }))
           }
-          placeholder="Akosua's Kente Boutique"
+          placeholder={
+            listingType === 'professional' ? 'Plumber, Lawyer, Mason, Driver…' : "Akosua's Kente Boutique"
+          }
           required
         />
 
-        <label className="label">Description</label>
+        <label className="label">{listingType === 'professional' ? 'About your work' : 'Description'}</label>
         <textarea
           className="input"
           rows={4}
@@ -251,43 +332,51 @@ export default function CreateListingPage() {
           onChange={(e) =>
             setForm((f) => ({ ...f, description: e.target.value }))
           }
-          placeholder="Handwoven kente cloth, ready-to-wear, and custom orders in Kumasi."
+          placeholder={
+            listingType === 'professional'
+              ? 'Years of experience, the kind of jobs you take on, areas you cover…'
+              : 'Handwoven kente cloth, ready-to-wear, and custom orders in Kumasi.'
+          }
           required
         />
 
-        <div className="create-grid">
-          <Input
-            label="Min Price (GHS)"
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.price_min}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setForm((f) => ({ ...f, price_min: e.target.value }))
-            }
-            placeholder="80"
-          />
-          <Input
-            label="Max Price (GHS)"
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.price_max}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setForm((f) => ({ ...f, price_max: e.target.value }))
-            }
-            placeholder="350"
-          />
-        </div>
+        {listingType === 'product' && (
+          <>
+            <div className="create-grid">
+              <Input
+                label="Min Price (GHS)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price_min}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setForm((f) => ({ ...f, price_min: e.target.value }))
+                }
+                placeholder="80"
+              />
+              <Input
+                label="Max Price (GHS)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price_max}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setForm((f) => ({ ...f, price_max: e.target.value }))
+                }
+                placeholder="350"
+              />
+            </div>
 
-        <Input
-          label="Price Label (optional)"
-          value={form.price_label}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setForm((f) => ({ ...f, price_label: e.target.value }))
-          }
-          placeholder="From GHS 50"
-        />
+            <Input
+              label="Price Label (optional)"
+              value={form.price_label}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setForm((f) => ({ ...f, price_label: e.target.value }))
+              }
+              placeholder="From GHS 50"
+            />
+          </>
+        )}
 
         <div className="create-grid">
           <Input
@@ -310,9 +399,11 @@ export default function CreateListingPage() {
         </div>
 
         <div className="photo-block">
-          <label className="label">Product photos</label>
+          <label className="label">{listingType === 'professional' ? 'Portfolio photos' : 'Product photos'}</label>
           <p className="photo-hint">
-            Add up to 5 photos from your gallery, camera, or files (JPEG, PNG, WebP).
+            {listingType === 'professional'
+              ? 'Add up to 5 photos of your work (JPEG, PNG, WebP, up to 15MB each).'
+              : 'Add up to 5 photos from your gallery, camera, or files (JPEG, PNG, WebP, up to 15MB each).'}
           </p>
           <div className="photo-actions">
             <Button
@@ -401,7 +492,7 @@ export default function CreateListingPage() {
             Cancel
           </Button>
           <Button type="submit" variant="primary" loading={saving}>
-            Publish Listing
+            {listingType === 'professional' ? 'Publish Profile' : 'Publish Listing'}
           </Button>
         </div>
       </form>
@@ -414,6 +505,21 @@ export default function CreateListingPage() {
           font-weight: 600;
         }
         .create-form { display: flex; flex-direction: column; gap: 14px; }
+        .listing-type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+        .listing-type-btn {
+          display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+          padding: 12px 14px; border-radius: 12px;
+          border: 1.5px solid var(--border, #e8e4dc); background: var(--bg-primary, #fff);
+          color: var(--text-primary, #1c1814); cursor: pointer; text-align: left;
+          transition: all 0.15s ease;
+        }
+        .listing-type-btn span { font-size: 14px; font-weight: 700; }
+        .listing-type-btn small { font-size: 11.5px; color: var(--text-muted, #9e9893); }
+        .listing-type-btn.active {
+          border-color: var(--accent, #2d1b69); background: var(--accent-light, #ede8fa);
+          color: var(--accent, #2d1b69);
+        }
+        .listing-type-btn.active small { color: var(--accent, #2d1b69); opacity: 0.75; }
         .create-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
