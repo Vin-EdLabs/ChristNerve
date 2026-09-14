@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { HandHeart, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,6 +8,7 @@ import { TextArea } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Prayer = {
   id: number;
@@ -35,8 +36,6 @@ export default function PrayerRequestsPage() {
   const { accountType } = useAuth();
   const isMember = accountType === 'member';
   const [tab, setTab] = useState(isMember ? 'all' : 'pending');
-  const [rows, setRows] = useState<Prayer[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -47,34 +46,31 @@ export default function PrayerRequestsPage() {
   const [answerText, setAnswerText] = useState('');
   const [answerSaving, setAnswerSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = isMember
-        ? await api.get('/pastoral/prayer-requests/mine', {
-            params: { status: tab === 'all' ? 'all' : tab },
-          })
-        : await api.get('/pastoral/prayer-requests', {
-            params: { status: tab },
-          });
-      setRows(asList<Prayer>(res.data));
-    } catch {
-      toast.error('Failed to load prayer requests');
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, isMember]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: rows = [], loading, refetch } = useCachedQuery<Prayer[]>(
+    `prayer-requests:${isMember ? 'mine' : 'all'}:${tab}`,
+    async () => {
+      try {
+        const res = isMember
+          ? await api.get('/pastoral/prayer-requests/mine', {
+              params: { status: tab === 'all' ? 'all' : tab },
+            })
+          : await api.get('/pastoral/prayer-requests', {
+              params: { status: tab },
+            });
+        return asList<Prayer>(res.data);
+      } catch {
+        toast.error('Failed to load prayer requests');
+        return [];
+      }
+    },
+    [tab, isMember]
+  );
 
   const update = async (id: number, body: Record<string, unknown>) => {
     try {
       await api.put(`/pastoral/prayer-requests/${id}`, body);
       toast.success('Updated');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not update');
     }
@@ -92,7 +88,7 @@ export default function PrayerRequestsPage() {
       toast.success('Sent to the member');
       setAnswering(null);
       setAnswerText('');
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -123,7 +119,7 @@ export default function PrayerRequestsPage() {
       setOpen(false);
       setForm({ request: '', is_anonymous: false });
       setTab(isMember ? 'all' : 'pending');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not submit');
     } finally {

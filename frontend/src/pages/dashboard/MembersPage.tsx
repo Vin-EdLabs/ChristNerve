@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Search, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { MemberTable } from '../../components/members/MemberTable';
 import { MemberForm } from '../../components/members/MemberForm';
 import type { MemberFormValues } from '../../components/members/MemberForm';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 function asMembers(payload: unknown): ChurchMember[] {
   if (Array.isArray(payload)) return payload as ChurchMember[];
@@ -22,32 +23,27 @@ function asMembers(payload: unknown): ChurchMember[] {
 }
 
 export default function MembersPage() {
-  const [loading, setLoading] = useState(true);
-  const [members, setMembers] = useState<ChurchMember[]>([]);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<ChurchMember | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async (q = '') => {
-    setLoading(true);
-    try {
-      const res = await api.get('/members', {
-        params: { search: q || undefined, limit: 50 },
-      });
-      setMembers(asMembers(res.data));
-    } catch {
-      toast.error('Failed to load members');
-      setMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load(query);
-  }, [load, query]);
+  const { data: members = [], loading, refetch } = useCachedQuery<ChurchMember[]>(
+    `members:${query}`,
+    async () => {
+      try {
+        const res = await api.get('/members', {
+          params: { search: query || undefined, limit: 50 },
+        });
+        return asMembers(res.data);
+      } catch {
+        toast.error('Failed to load members');
+        return [];
+      }
+    },
+    [query]
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setQuery(search.trim()), 300);
@@ -93,7 +89,7 @@ export default function MembersPage() {
 
       setPanelOpen(false);
       setEditing(null);
-      await load(query);
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

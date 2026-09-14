@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { AttendanceForm } from '../../components/attendance/AttendanceForm';
 import type { AttendanceFormValues } from '../../components/attendance/AttendanceForm';
 import { AttendanceStats } from '../../components/attendance/AttendanceStats';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 function asList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -37,32 +38,35 @@ function mapStats(raw: Record<string, unknown> | null): AttendanceStatsType | nu
   };
 }
 
+type AttendancePayload = {
+  records: ChurchAttendance[];
+  stats: AttendanceStatsType | null;
+};
+
 export default function AttendancePage() {
-  const [loading, setLoading] = useState(true);
-  const [records, setRecords] = useState<ChurchAttendance[]>([]);
-  const [stats, setStats] = useState<AttendanceStatsType | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [listRes, statsRes] = await Promise.all([
-        api.get('/attendance'),
-        api.get('/attendance/stats'),
-      ]);
-      setRecords(asList<ChurchAttendance>(listRes.data));
-      setStats(mapStats(statsRes.data));
-    } catch {
-      toast.error('Failed to load attendance');
-    } finally {
-      setLoading(false);
+  const { data, loading, refetch } = useCachedQuery<AttendancePayload>(
+    'attendance',
+    async () => {
+      try {
+        const [listRes, statsRes] = await Promise.all([
+          api.get('/attendance'),
+          api.get('/attendance/stats'),
+        ]);
+        return {
+          records: asList<ChurchAttendance>(listRes.data),
+          stats: mapStats(statsRes.data),
+        };
+      } catch {
+        toast.error('Failed to load attendance');
+        return { records: [], stats: null };
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
+  const records = data?.records || [];
+  const stats = data?.stats || null;
 
   const handleSubmit = async (
     data: AttendanceFormValues & { total_count: number }
@@ -81,7 +85,7 @@ export default function AttendancePage() {
       });
       toast.success('Service attendance recorded');
       setModalOpen(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
@@ -29,6 +29,7 @@ import {
   youtubeThumbnail,
 } from '../../utils/youtube';
 import { LiveNowCard } from '../../components/live/LiveNowCard';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type HomePayload = {
   live?: { live_stream_url?: string | null; live_stream_active?: boolean };
@@ -72,6 +73,26 @@ type Person = {
   last_name: string;
 };
 
+type MemberHomePayload = {
+  home: HomePayload;
+  birthdays: Person[];
+  anniversaries: Person[];
+};
+
+async function fetchMemberHome(): Promise<MemberHomePayload> {
+  const [homeRes, bdayRes] = await Promise.all([
+    api.get('/church-life/home').catch(() => ({ data: {} })),
+    api.get('/church-life/birthdays').catch(() => ({ data: {} })),
+  ]);
+  const h = homeRes.data?.data || homeRes.data || {};
+  const b = bdayRes.data?.data || bdayRes.data || {};
+  return {
+    home: h,
+    birthdays: asList<Person>(b.birthdays || b),
+    anniversaries: asList<Person>(b.anniversaries),
+  };
+}
+
 const HERO_FALLBACK =
   'https://images.unsplash.com/photo-1438232992991-9998f8d4b5e0?w=1400&q=80';
 
@@ -84,10 +105,10 @@ function greetingForHour(hour: number) {
 export default function MemberHome() {
   const { user, tenant } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [home, setHome] = useState<HomePayload>({});
-  const [birthdays, setBirthdays] = useState<Person[]>([]);
-  const [anniversaries, setAnniversaries] = useState<Person[]>([]);
+  const { data: payload, loading, setData } = useCachedQuery<MemberHomePayload>('member-home', fetchMemberHome);
+  const home = payload?.home || {};
+  const birthdays = payload?.birthdays || [];
+  const anniversaries = payload?.anniversaries || [];
   const [watch, setWatch] = useState<{
     id: string;
     title?: string;
@@ -95,30 +116,6 @@ export default function MemberHome() {
     live?: boolean;
   } | null>(null);
   const [now] = useState(() => new Date());
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const [homeRes, bdayRes] = await Promise.all([
-          api.get('/church-life/home').catch(() => ({ data: {} })),
-          api.get('/church-life/birthdays').catch(() => ({ data: {} })),
-        ]);
-        if (cancelled) return;
-        const h = homeRes.data?.data || homeRes.data || {};
-        setHome(h);
-        const b = bdayRes.data?.data || bdayRes.data || {};
-        setBirthdays(asList<Person>(b.birthdays || b));
-        setAnniversaries(asList<Person>(b.anniversaries));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const greeting = useMemo(() => greetingForHour(now.getHours()), [now]);
   const dateLabel = useMemo(
@@ -135,7 +132,8 @@ export default function MemberHome() {
     try {
       await api.post(`/church-life/feed/${id}/react`, { reaction });
       const homeRes = await api.get('/church-life/home');
-      setHome(homeRes.data?.data || homeRes.data || {});
+      const freshHome = homeRes.data?.data || homeRes.data || {};
+      setData((prev) => (prev ? { ...prev, home: freshHome } : { home: freshHome, birthdays: [], anniversaries: [] }));
     } catch {
       /* ignore */
     }

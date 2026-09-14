@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import {
   ChevronRight,
   Megaphone,
@@ -19,6 +19,7 @@ import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Spinner } from '../../components/ui/Spinner';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type DeptListItem = ChurchDepartment & {
   leader_first_name?: string;
@@ -84,65 +85,61 @@ function leaderName(d: DeptListItem) {
   return `${d.leader_first_name || ''} ${d.leader_last_name || ''}`.trim();
 }
 
+type DeptDetailPayload = {
+  detail: DeptDetail;
+  memberOptions: MemberOption[];
+};
+
 export default function DepartmentsPage() {
-  const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState<DeptListItem[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [detail, setDetail] = useState<DeptDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
-  const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
   const [leaderId, setLeaderId] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const {
+    data: departments = [],
+    loading,
+    refetch: refetchDepartments,
+  } = useCachedQuery<DeptListItem[]>('departments', async () => {
     try {
       const res = await api.get('/departments');
-      setDepartments(asList<DeptListItem>(res.data));
+      return asList<DeptListItem>(res.data);
     } catch {
       toast.error('Failed to load departments');
-    } finally {
-      setLoading(false);
+      return [];
     }
-  }, []);
+  });
 
-  const loadDetail = useCallback(async (id: number) => {
-    setDetailLoading(true);
-    try {
-      const [deptRes, membersRes] = await Promise.all([
-        api.get(`/departments/${id}`),
-        api.get('/members', { params: { status: 'active', limit: 100 } }),
-      ]);
-      setDetail(deptRes.data as DeptDetail);
-      setEditForm({
-        name: deptRes.data.name || '',
-        description: deptRes.data.description || '',
-      });
-      setLeaderId(
-        deptRes.data.leader_member_id ? String(deptRes.data.leader_member_id) : ''
-      );
-      setMemberOptions(asList<MemberOption>(membersRes.data));
-    } catch {
-      toast.error('Could not load department');
-      setSelectedId(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (selectedId) void loadDetail(selectedId);
-    else setDetail(null);
-  }, [selectedId, loadDetail]);
+  const {
+    data: detailPayload,
+    loading: detailLoading,
+    refetch: refetchDetail,
+  } = useCachedQuery<DeptDetailPayload>(
+    selectedId ? `department-detail:${selectedId}` : null,
+    async () => {
+      try {
+        const [deptRes, membersRes] = await Promise.all([
+          api.get(`/departments/${selectedId}`),
+          api.get('/members', { params: { status: 'active', limit: 100 } }),
+        ]);
+        return {
+          detail: deptRes.data as DeptDetail,
+          memberOptions: asList<MemberOption>(membersRes.data),
+        };
+      } catch (err) {
+        toast.error('Could not load department');
+        setSelectedId(null);
+        throw err;
+      }
+    },
+    [selectedId]
+  );
+  const detail = detailPayload?.detail || null;
+  const memberOptions = detailPayload?.memberOptions || [];
 
   const totalMembers = useMemo(
     () => departments.reduce((sum, d) => sum + (d.member_count || 0), 0),
@@ -165,7 +162,7 @@ export default function DepartmentsPage() {
       setOpen(false);
       setName('');
       setDescription('');
-      await load();
+      refetchDepartments();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -188,8 +185,8 @@ export default function DepartmentsPage() {
       });
       toast.success('Department updated');
       setEditing(false);
-      await load();
-      await loadDetail(selectedId);
+      refetchDepartments();
+      refetchDetail();
     } catch {
       toast.error('Could not update department');
     } finally {
@@ -204,7 +201,7 @@ export default function DepartmentsPage() {
       await api.delete(`/departments/${selectedId}`);
       toast.success('Department removed');
       setSelectedId(null);
-      await load();
+      refetchDepartments();
     } catch {
       toast.error('Could not delete department');
     }
@@ -378,7 +375,16 @@ export default function DepartmentsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setEditing(true)}
+                    onClick={() => {
+                      setEditForm({
+                        name: detail.name || '',
+                        description: detail.description || '',
+                      });
+                      setLeaderId(
+                        detail.leader_member_id ? String(detail.leader_member_id) : ''
+                      );
+                      setEditing(true);
+                    }}
                   >
                     <Pencil size={14} /> Edit
                   </Button>

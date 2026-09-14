@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { Plus, UserRoundSearch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,6 +8,7 @@ import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type FollowUp = {
   id: number;
@@ -36,44 +37,43 @@ function asList<T>(payload: unknown): T[] {
 
 export default function FollowUpPage() {
   const [tab, setTab] = useState('pending');
-  const [rows, setRows] = useState<FollowUp[]>([]);
-  const [members, setMembers] = useState<MemberOpt[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ member_id: '', reason: '' });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/pastoral/follow-ups', {
-        params: { status: tab },
-      });
-      setRows(asList<FollowUp>(res.data));
-    } catch {
-      toast.error('Failed to load follow-ups');
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch } = useCachedQuery<FollowUp[]>(
+    `follow-ups:${tab}`,
+    async () => {
+      try {
+        const res = await api.get('/pastoral/follow-ups', {
+          params: { status: tab },
+        });
+        return asList<FollowUp>(res.data);
+      } catch {
+        toast.error('Failed to load follow-ups');
+        return [];
+      }
+    },
+    [tab]
+  );
+
+  const { data: members = [] } = useCachedQuery<MemberOpt[]>(
+    'follow-up-member-options',
+    async () => {
+      try {
+        const res = await api.get('/members', { params: { limit: 100, status: 'active' } });
+        return asList<MemberOpt>(res.data);
+      } catch {
+        return [];
+      }
     }
-  }, [tab]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    api
-      .get('/members', { params: { limit: 100, status: 'active' } })
-      .then((res) => setMembers(asList<MemberOpt>(res.data)))
-      .catch(() => undefined);
-  }, []);
+  );
 
   const update = async (id: number, body: Record<string, unknown>) => {
     try {
       await api.put(`/pastoral/follow-ups/${id}`, body);
       toast.success('Updated');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not update');
     }
@@ -91,7 +91,7 @@ export default function FollowUpPage() {
       setOpen(false);
       setForm({ member_id: '', reason: '' });
       setTab('pending');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not add');
     } finally {

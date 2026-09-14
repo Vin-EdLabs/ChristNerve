@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -6,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { canEditChurchMedia } from '../../utils/churchLife';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type TrendPoint = { month?: string; date?: string; count?: number; total?: number; amount?: number };
 
@@ -51,34 +51,29 @@ function BarList({
 export default function GrowthDashboardPage() {
   const { accountType, user } = useAuth();
   const canView = accountType !== 'member';
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<Growth>({
+
+  const { data: growthData, loading } = useCachedQuery<Growth>(
+    canView ? 'growth-dashboard' : null,
+    async () => {
+      try {
+        const res = await api.get('/church-life/growth');
+        const d = res.data?.data || res.data || {};
+        return {
+          membership_trend: d.membership_trend || [],
+          attendance_trend: d.attendance_trend || [],
+          giving_trend: d.giving_trend || [],
+        };
+      } catch {
+        toast.error('Failed to load growth');
+        return { membership_trend: [], attendance_trend: [], giving_trend: [] };
+      }
+    }
+  );
+  const data: Growth = growthData ?? {
     membership_trend: [],
     attendance_trend: [],
     giving_trend: [],
-  });
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/church-life/growth');
-      const d = res.data?.data || res.data || {};
-      setData({
-        membership_trend: d.membership_trend || [],
-        attendance_trend: d.attendance_trend || [],
-        giving_trend: d.giving_trend || [],
-      });
-    } catch {
-      toast.error('Failed to load growth');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (canView) void load();
-    else setLoading(false);
-  }, [canView, load]);
+  };
 
   if (!canView) {
     return (

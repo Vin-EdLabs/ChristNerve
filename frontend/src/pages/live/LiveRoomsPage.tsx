@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Video, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,50 +10,38 @@ import { Spinner } from '../../components/ui/Spinner';
 import { RoomCard } from '../../components/live/RoomCard';
 import { canEditChurchMedia, asList } from '../../utils/churchLife';
 import type { LiveRoom } from '../../types/live';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const REFRESH_MS = 30_000;
-
-/** Kept outside the component so revisiting this page (SPA nav away + back) can render
- *  instantly from the last-known list while a silent background refresh brings it current —
- *  no more blocking full-page spinner on every click into Live Rooms. */
-let roomsCache: LiveRoom[] | null = null;
 
 export default function LiveRoomsPage() {
   const { accountType, user } = useAuth();
   const navigate = useNavigate();
   const canManage = canEditChurchMedia(accountType, user?.role);
-  const [loading, setLoading] = useState(roomsCache === null);
-  const [rooms, setRooms] = useState<LiveRoom[]>(roomsCache || []);
-  const timerRef = useRef<number | null>(null);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const res = await api.get('/live/rooms');
-      const data = asList<LiveRoom>(res.data);
-      roomsCache = data;
-      setRooms(data);
-    } catch {
-      if (!silent) toast.error('Failed to load live rooms');
-    } finally {
-      if (!silent) setLoading(false);
+  const { data: rooms = [], loading, refetch } = useCachedQuery<LiveRoom[]>(
+    'live-rooms',
+    async () => {
+      try {
+        const res = await api.get('/live/rooms');
+        return asList<LiveRoom>(res.data);
+      } catch {
+        toast.error('Failed to load live rooms');
+        return [];
+      }
     }
-  }, []);
+  );
 
   useEffect(() => {
-    // Already have a cached list showing — refresh quietly instead of blocking on a spinner.
-    void load(roomsCache !== null);
-    timerRef.current = window.setInterval(() => void load(true), REFRESH_MS);
-    return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current);
-    };
-  }, [load]);
+    const timerId = window.setInterval(() => refetch(), REFRESH_MS);
+    return () => window.clearInterval(timerId);
+  }, [refetch]);
 
   const startRoom = async (room: LiveRoom) => {
     try {
       await api.post(`/live/rooms/${room.id}/start`);
       toast.success('Room is live — members notified');
-      void load(true);
+      refetch();
     } catch {
       toast.error('Could not start room');
     }
@@ -64,7 +52,7 @@ export default function LiveRoomsPage() {
     try {
       await api.post(`/live/rooms/${room.id}/end`);
       toast.success('Room ended');
-      void load(true);
+      refetch();
     } catch {
       toast.error('Could not end room');
     }
@@ -75,7 +63,7 @@ export default function LiveRoomsPage() {
     try {
       await api.delete(`/live/rooms/${room.id}`);
       toast.success('Room deleted');
-      void load(true);
+      refetch();
     } catch {
       toast.error('Could not delete room');
     }

@@ -22,6 +22,7 @@ import { Button } from '../../components/ui/Button';
 import { Input, TextArea } from '../../components/ui/Input';
 import { Spinner } from '../../components/ui/Spinner';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type ChurchPageData = {
   id?: number;
@@ -60,18 +61,22 @@ type JoinApp = {
   created_at?: string;
 };
 
+type ChurchPageAdminPayload = {
+  church: ChurchPageData;
+  gallery: GalleryItem[];
+  pending: number;
+  joins: JoinApp[];
+};
+
 export default function ChurchPageAdmin() {
   const { user, tenant } = useAuth();
   const role = String(user?.role || '').toLowerCase();
   const canEdit = ['pastor', 'admin', 'super-admin', 'secretary'].includes(role);
 
   const [tab, setTab] = useState<'content' | 'joins'>('content');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [church, setChurch] = useState<ChurchPageData>({});
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [joins, setJoins] = useState<JoinApp[]>([]);
-  const [pending, setPending] = useState(0);
   const [joinFilter, setJoinFilter] = useState<'pending' | 'approved' | 'declined' | 'all'>(
     'pending'
   );
@@ -79,29 +84,37 @@ export default function ChurchPageAdmin() {
   const heroRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [pageRes, joinsRes] = await Promise.all([
-        api.get('/church-page'),
-        api.get('/church-page/joins', { params: { status: 'all' } }).catch(() => ({
-          data: { data: [] },
-        })),
-      ]);
-      setChurch(pageRes.data?.church || {});
-      setGallery(Array.isArray(pageRes.data?.gallery) ? pageRes.data.gallery : []);
-      setPending(Number(pageRes.data?.pending_joins) || 0);
-      setJoins(Array.isArray(joinsRes.data?.data) ? joinsRes.data.data : []);
-    } catch {
-      toast.error('Failed to load church page settings');
-    } finally {
-      setLoading(false);
+  const { data, loading, refetch } = useCachedQuery<ChurchPageAdminPayload>(
+    'church-page-admin',
+    async () => {
+      try {
+        const [pageRes, joinsRes] = await Promise.all([
+          api.get('/church-page'),
+          api.get('/church-page/joins', { params: { status: 'all' } }).catch(() => ({
+            data: { data: [] },
+          })),
+        ]);
+        return {
+          church: pageRes.data?.church || {},
+          gallery: Array.isArray(pageRes.data?.gallery) ? pageRes.data.gallery : [],
+          pending: Number(pageRes.data?.pending_joins) || 0,
+          joins: Array.isArray(joinsRes.data?.data) ? joinsRes.data.data : [],
+        };
+      } catch {
+        toast.error('Failed to load church page settings');
+        return { church: {}, gallery: [], pending: 0, joins: [] };
+      }
     }
-  };
+  );
+  const pending = data?.pending ?? 0;
+  const joins = data?.joins ?? [];
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (data) {
+      setChurch(data.church);
+      setGallery(data.gallery);
+    }
+  }, [data]);
 
   const saveContent = async (e: FormEvent) => {
     e.preventDefault();
@@ -181,7 +194,7 @@ export default function ChurchPageAdmin() {
     try {
       await api.post(`/church-page/joins/${id}/approve`);
       toast.success('Approved — member added (PIN = last 4 of phone)');
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -197,7 +210,7 @@ export default function ChurchPageAdmin() {
     try {
       await api.post(`/church-page/joins/${id}/decline`);
       toast.success('Request declined');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not decline');
     } finally {

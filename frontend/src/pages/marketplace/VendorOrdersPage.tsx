@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -6,6 +5,7 @@ import api from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const uploadsBase = import.meta.env.VITE_UPLOADS_URL || '';
 const PLACEHOLDER =
@@ -42,30 +42,23 @@ function resolveImage(url?: string | null) {
 export default function VendorOrdersPage() {
   const { user, accountType } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<SellerOrder[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/chat/conversations');
-      const all = asList<SellerOrder>(res.data);
-      const mine =
-        accountType === 'member'
+  const { data: orders = [], loading } = useCachedQuery<SellerOrder[]>(
+    `vendor-orders:${accountType}:${user?.id ?? ''}`,
+    async () => {
+      try {
+        const res = await api.get('/chat/conversations');
+        const all = asList<SellerOrder>(res.data);
+        return accountType === 'member'
           ? all.filter((c) => Number(c.seller_member_id) === Number(user?.id))
           : all;
-      setOrders(mine);
-    } catch {
-      toast.error('Failed to load orders');
-      setOrders([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [accountType, user?.id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      } catch {
+        toast.error('Failed to load orders');
+        return [];
+      }
+    },
+    [accountType, user?.id]
+  );
 
   if (loading) {
     return (

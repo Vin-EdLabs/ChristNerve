@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { Pin, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -10,6 +10,7 @@ import { Modal } from '../../components/ui/Modal';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Badge } from '../../components/ui/Badge';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 function asList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -32,8 +33,6 @@ function canManageAnnouncements(
 export default function AnnouncementsPage() {
   const { user, accountType } = useAuth();
   const canManage = canManageAnnouncements(accountType, user?.role);
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<ChurchAnnouncement[]>([]);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -42,21 +41,18 @@ export default function AnnouncementsPage() {
   const [audience, setAudience] = useState('all');
   const [isPinned, setIsPinned] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/announcements');
-      setItems(asList<ChurchAnnouncement>(res.data));
-    } catch {
-      toast.error('Failed to load announcements');
-    } finally {
-      setLoading(false);
+  const { data: items = [], loading, refetch } = useCachedQuery<ChurchAnnouncement[]>(
+    'announcements',
+    async () => {
+      try {
+        const res = await api.get('/announcements');
+        return asList<ChurchAnnouncement>(res.data);
+      } catch {
+        toast.error('Failed to load announcements');
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -82,7 +78,7 @@ export default function AnnouncementsPage() {
       setBody('');
       setAudience('all');
       setIsPinned(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -98,7 +94,7 @@ export default function AnnouncementsPage() {
     try {
       await api.post(`/announcements/${item.id}/pin`);
       toast.success(item.is_pinned ? 'Unpinned' : 'Pinned to top');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not update pin');
     }
@@ -117,7 +113,7 @@ export default function AnnouncementsPage() {
     try {
       await api.delete(`/announcements/${item.id}`);
       toast.success('Announcement deleted');
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

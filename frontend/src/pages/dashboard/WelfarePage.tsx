@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { HeartHandshake, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,6 +8,7 @@ import { Input, TextArea, Select } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Welfare = {
   id: number;
@@ -42,9 +43,6 @@ export default function WelfarePage() {
   const { accountType } = useAuth();
   const isMember = accountType === 'member';
   const [tab, setTab] = useState(isMember ? 'all' : 'open');
-  const [rows, setRows] = useState<Welfare[]>([]);
-  const [members, setMembers] = useState<MemberOpt[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -54,39 +52,40 @@ export default function WelfarePage() {
     description: '',
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const status = tab === 'all' ? 'all' : tab;
-      const res = isMember
-        ? await api.get('/pastoral/welfare/mine', { params: { status } })
-        : await api.get('/pastoral/welfare', { params: { status } });
-      setRows(asList<Welfare>(res.data));
-    } catch {
-      toast.error('Failed to load welfare cases');
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch } = useCachedQuery<Welfare[]>(
+    `welfare:${isMember ? 'mine' : 'all'}:${tab}`,
+    async () => {
+      try {
+        const status = tab === 'all' ? 'all' : tab;
+        const res = isMember
+          ? await api.get('/pastoral/welfare/mine', { params: { status } })
+          : await api.get('/pastoral/welfare', { params: { status } });
+        return asList<Welfare>(res.data);
+      } catch {
+        toast.error('Failed to load welfare cases');
+        return [];
+      }
+    },
+    [tab, isMember]
+  );
+
+  const { data: members = [] } = useCachedQuery<MemberOpt[]>(
+    isMember ? null : 'welfare-member-options',
+    async () => {
+      try {
+        const res = await api.get('/members', { params: { limit: 100 } });
+        return asList<MemberOpt>(res.data);
+      } catch {
+        return [];
+      }
     }
-  }, [tab, isMember]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (isMember) return;
-    api
-      .get('/members', { params: { limit: 100 } })
-      .then((res) => setMembers(asList<MemberOpt>(res.data)))
-      .catch(() => undefined);
-  }, [isMember]);
+  );
 
   const update = async (id: number, body: Record<string, unknown>) => {
     try {
       await api.put(`/pastoral/welfare/${id}`, body);
       toast.success('Updated');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not update');
     }
@@ -113,7 +112,7 @@ export default function WelfarePage() {
       setOpen(false);
       setForm({ member_id: '', case_type: 'other', title: '', description: '' });
       setTab(isMember ? 'all' : 'open');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not submit');
     } finally {

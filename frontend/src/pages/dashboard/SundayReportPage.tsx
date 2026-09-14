@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { ClipboardList, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { asList, canEditChurchMedia } from '../../utils/churchLife';
 import { whatsappShareUrl } from '../../utils/youtube';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Report = {
   id: number;
@@ -37,28 +38,22 @@ const empty = {
 export default function SundayReportPage() {
   const { accountType, user } = useAuth();
   const canEdit = canEditChurchMedia(accountType, user?.role);
-  const [rows, setRows] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(empty);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/church-life/sunday-reports');
-      setRows(asList<Report>(res.data));
-    } catch {
-      toast.error('Failed to load reports');
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch } = useCachedQuery<Report[]>(
+    'sunday-reports',
+    async () => {
+      try {
+        const res = await api.get('/church-life/sunday-reports');
+        return asList<Report>(res.data);
+      } catch {
+        toast.error('Failed to load reports');
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  );
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -71,7 +66,7 @@ export default function SundayReportPage() {
       toast.success('Sunday report saved');
       setOpen(false);
       setForm(empty);
-      await load();
+      refetch();
     } catch {
       toast.error('Could not save report');
     } finally {

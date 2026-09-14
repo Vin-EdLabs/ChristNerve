@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -28,6 +28,7 @@ import { LiveNowCard } from '../../components/live/LiveNowCard';
 import { MemberForm } from '../../components/members/MemberForm';
 import type { MemberFormValues } from '../../components/members/MemberForm';
 import { GivingForm } from '../../components/finance/GivingForm';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 import type { GivingFormValues } from '../../components/finance/GivingForm';
 import { ExpenseForm } from '../../components/finance/ExpenseForm';
 import type { ExpenseFormValues } from '../../components/finance/ExpenseForm';
@@ -96,26 +97,13 @@ function timeAgo(iso?: string) {
 }
 
 function BirthdayWidget() {
-  const [todayList, setTodayList] = useState<any[]>([]);
-  const [upcomingList, setUpcomingList] = useState<any[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.get('/church-life/birthdays?days=14');
-        if (cancelled) return;
-        const d = res.data || {};
-        setTodayList(d.today || []);
-        setUpcomingList(d.upcoming || []);
-      } catch {
-        /* optional widget */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data } = useCachedQuery<{ today: any[]; upcoming: any[] }>('dash-birthdays-widget', async () => {
+    const res = await api.get('/church-life/birthdays?days=14');
+    const d = res.data || {};
+    return { today: d.today || [], upcoming: d.upcoming || [] };
+  });
+  const todayList = data?.today || [];
+  const upcomingList = data?.upcoming || [];
 
   const totalCount = todayList.length + upcomingList.length;
 
@@ -211,8 +199,15 @@ export default function DashboardHome() {
 
 function StaffDashboardHome() {
   const { user, tenant } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<DashPayload | null>(null);
+  const { data, loading } = useCachedQuery<DashPayload>('dashboard-home', async () => {
+    try {
+      const res = await api.get('/dashboard/home');
+      return res.data || {};
+    } catch (err) {
+      toast.error('Could not load dashboard');
+      throw err;
+    }
+  });
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [savingMember, setSavingMember] = useState(false);
   const [givingOpen, setGivingOpen] = useState(false);
@@ -238,27 +233,6 @@ function StaffDashboardHome() {
       }),
     []
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const res = await api.get('/dashboard/home');
-        if (!cancelled) setData(res.data || {});
-      } catch {
-        if (!cancelled) {
-          toast.error('Could not load dashboard');
-          setData({});
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const submitAddMember = async (formValues: MemberFormValues, avatarFile?: File | null) => {
     setSavingMember(true);

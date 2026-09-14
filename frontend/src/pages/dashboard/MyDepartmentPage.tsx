@@ -16,6 +16,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { Button } from '../../components/ui/Button';
 import { Input, TextArea, Select } from '../../components/ui/Input';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type RosterMember = {
   id: number;
@@ -51,13 +52,15 @@ type DeptInfo = {
   posts?: DeptPost[];
 };
 
+type MyDepartmentPayload = {
+  departments: DeptInfo[];
+  ministry: string | null;
+  cellGroup: string | null;
+};
+
 export default function MyDepartmentPage() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState<DeptInfo[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
-  const [ministry, setMinistry] = useState<string | null>(null);
-  const [cellGroup, setCellGroup] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [postForm, setPostForm] = useState({
     title: '',
@@ -67,32 +70,37 @@ export default function MyDepartmentPage() {
     location: '',
   });
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/departments/mine');
-      const list: DeptInfo[] = Array.isArray(res.data?.departments)
-        ? res.data.departments
-        : res.data?.department
-          ? [res.data.department]
-          : [];
-      setDepartments(list);
-      setActiveId((prev) => {
-        if (prev && list.some((d) => d.id === prev)) return prev;
-        return list[0]?.id ?? null;
-      });
-      setMinistry(res.data?.ministry || null);
-      setCellGroup(res.data?.cell_group || null);
-    } catch {
-      setDepartments([]);
-    } finally {
-      setLoading(false);
+  const { data, loading, refetch } = useCachedQuery<MyDepartmentPayload>(
+    'my-department',
+    async () => {
+      try {
+        const res = await api.get('/departments/mine');
+        const list: DeptInfo[] = Array.isArray(res.data?.departments)
+          ? res.data.departments
+          : res.data?.department
+            ? [res.data.department]
+            : [];
+        return {
+          departments: list,
+          ministry: res.data?.ministry || null,
+          cellGroup: res.data?.cell_group || null,
+        };
+      } catch {
+        return { departments: [], ministry: null, cellGroup: null };
+      }
     }
-  };
+  );
+  const departments = data?.departments ?? [];
+  const ministry = data?.ministry ?? null;
+  const cellGroup = data?.cellGroup ?? null;
 
   useEffect(() => {
-    void load();
-  }, []);
+    setActiveId((prev) => {
+      if (prev && departments.some((d) => d.id === prev)) return prev;
+      return departments[0]?.id ?? null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [departments]);
 
   const department = departments.find((d) => d.id === activeId) || null;
 
@@ -120,7 +128,7 @@ export default function MyDepartmentPage() {
         meeting_at: '',
         location: '',
       });
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

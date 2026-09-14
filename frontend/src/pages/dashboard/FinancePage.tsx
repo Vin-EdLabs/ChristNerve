@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import {
@@ -30,6 +30,7 @@ import { GivingForm } from '../../components/finance/GivingForm';
 import type { GivingFormValues } from '../../components/finance/GivingForm';
 import { ExpenseForm } from '../../components/finance/ExpenseForm';
 import type { ExpenseFormValues } from '../../components/finance/ExpenseForm';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Tab = 'dashboard' | 'income' | 'expenses' | 'reports';
 
@@ -69,6 +70,14 @@ function mapGivingSummary(raw: Record<string, unknown> | null): GivingSummaryTyp
   };
 }
 
+type FinancePayload = {
+  summary: GivingSummaryType | null;
+  giving: ChurchGiving[];
+  expenses: ChurchExpense[];
+  report: Record<string, unknown> | null;
+  members: ChurchMember[];
+};
+
 export default function FinancePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
@@ -80,55 +89,53 @@ export default function FinancePage() {
       ? (tabParam as Tab)
       : 'dashboard';
   const [tab, setTab] = useState<Tab>(initialTab);
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<GivingSummaryType | null>(null);
-  const [giving, setGiving] = useState<ChurchGiving[]>([]);
-  const [expenses, setExpenses] = useState<ChurchExpense[]>([]);
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
-  const [members, setMembers] = useState<ChurchMember[]>([]);
   const [givingOpen, setGivingOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [summaryRes, givingRes, expenseRes, reportRes, membersRes] =
-        await Promise.allSettled([
-          api.get('/finance/giving/summary'),
-          api.get('/finance/giving', { params: { limit: 50 } }),
-          api.get('/finance/expenses', { params: { limit: 50 } }),
-          api.get('/finance/report'),
-          api.get('/members', { params: { limit: 100 } }),
-        ]);
+  const { data, loading, refetch } = useCachedQuery<FinancePayload>(
+    'finance',
+    async () => {
+      try {
+        const [summaryRes, givingRes, expenseRes, reportRes, membersRes] =
+          await Promise.allSettled([
+            api.get('/finance/giving/summary'),
+            api.get('/finance/giving', { params: { limit: 50 } }),
+            api.get('/finance/expenses', { params: { limit: 50 } }),
+            api.get('/finance/report'),
+            api.get('/members', { params: { limit: 100 } }),
+          ]);
 
-      if (summaryRes.status === 'fulfilled') {
-        setSummary(mapGivingSummary(summaryRes.value.data));
+        return {
+          summary:
+            summaryRes.status === 'fulfilled'
+              ? mapGivingSummary(summaryRes.value.data)
+              : null,
+          giving:
+            givingRes.status === 'fulfilled'
+              ? asList<ChurchGiving>(givingRes.value.data, ['data', 'giving'])
+              : [],
+          expenses:
+            expenseRes.status === 'fulfilled'
+              ? asList<ChurchExpense>(expenseRes.value.data, ['data', 'expenses'])
+              : [],
+          report: reportRes.status === 'fulfilled' ? reportRes.value.data : null,
+          members:
+            membersRes.status === 'fulfilled'
+              ? asList<ChurchMember>(membersRes.value.data, ['data', 'members'])
+              : [],
+        };
+      } catch {
+        toast.error('Failed to load finance data');
+        return { summary: null, giving: [], expenses: [], report: null, members: [] };
       }
-      if (givingRes.status === 'fulfilled') {
-        setGiving(asList<ChurchGiving>(givingRes.value.data, ['data', 'giving']));
-      }
-      if (expenseRes.status === 'fulfilled') {
-        setExpenses(
-          asList<ChurchExpense>(expenseRes.value.data, ['data', 'expenses'])
-        );
-      }
-      if (reportRes.status === 'fulfilled') setReport(reportRes.value.data);
-      if (membersRes.status === 'fulfilled') {
-        setMembers(
-          asList<ChurchMember>(membersRes.value.data, ['data', 'members'])
-        );
-      }
-    } catch {
-      toast.error('Failed to load finance data');
-    } finally {
-      setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
+  const summary = data?.summary ?? null;
+  const giving = data?.giving ?? [];
+  const expenses = data?.expenses ?? [];
+  const report = data?.report ?? null;
+  const members = data?.members ?? [];
 
   useEffect(() => {
     if (
@@ -170,7 +177,7 @@ export default function FinancePage() {
           : 'Income recorded successfully'
       );
       setGivingOpen(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -193,7 +200,7 @@ export default function FinancePage() {
       });
       toast.success('Expense recorded');
       setExpenseOpen(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -454,7 +461,7 @@ export default function FinancePage() {
                 <tbody>
                   {giving.slice(0, 12).map((g) => (
                     <tr key={g.id}>
-                      <td>{g.member_name || (g.first_name ? `${g.first_name} ${g.last_name || ''}` : 'Anonymous')}</td>
+                      <td>{g.member_name || (g.first_name ? `${g.first_name} ${g.last_name || ''}` : g.giving_type)}</td>
                       <td>{g.giving_type}</td>
                       <td>{formatGHS(Number(g.amount))}</td>
                       <td>{g.payment_method || '—'}</td>

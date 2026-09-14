@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { KeyRound, Plus, Shield, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const ROLES = [
   { value: 'pastor', label: 'Pastor' },
@@ -59,9 +60,6 @@ export default function UsersPage() {
 
   const [section, setSection] = useState<'staff' | 'members'>('staff');
   const [addOpen, setAddOpen] = useState(false);
-  const [users, setUsers] = useState<ChurchUser[]>([]);
-  const [members, setMembers] = useState<MemberLoginRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     first_name: '',
@@ -89,45 +87,50 @@ export default function UsersPage() {
     role: 'secretary',
   });
 
-  const loadStaff = useCallback(async () => {
-    const res = await api.get('/users');
-    setUsers(asList<ChurchUser>(res.data));
-  }, []);
-
-  const loadMembers = useCallback(async () => {
-    const res = await api.get('/members', { params: { limit: 100, page: 1 } });
-    const rows = asList<MemberLoginRow>(res.data).map((m) => ({
-      id: m.id,
-      first_name: m.first_name,
-      last_name: m.last_name,
-      email: m.email,
-      phone: m.phone,
-      username: m.username,
-      credentials_set: Boolean(m.credentials_set),
-      membership_status: m.membership_status,
-    }));
-    setMembers(rows);
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (section === 'staff') await loadStaff();
-      else await loadMembers();
-    } catch {
-      toast.error(
-        section === 'staff' ? 'Failed to load users' : 'Failed to load members'
-      );
-      if (section === 'staff') setUsers([]);
-      else setMembers([]);
-    } finally {
-      setLoading(false);
+  const {
+    data: users = [],
+    loading: staffLoading,
+    refetch: refetchStaff,
+  } = useCachedQuery<ChurchUser[]>(
+    section === 'staff' ? 'users-staff' : null,
+    async () => {
+      try {
+        const res = await api.get('/users');
+        return asList<ChurchUser>(res.data);
+      } catch {
+        toast.error('Failed to load users');
+        return [];
+      }
     }
-  }, [section, loadStaff, loadMembers]);
+  );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const {
+    data: members = [],
+    loading: membersLoading,
+    refetch: refetchMembers,
+  } = useCachedQuery<MemberLoginRow[]>(
+    section === 'members' ? 'users-members' : null,
+    async () => {
+      try {
+        const res = await api.get('/members', { params: { limit: 100, page: 1 } });
+        return asList<MemberLoginRow>(res.data).map((m) => ({
+          id: m.id,
+          first_name: m.first_name,
+          last_name: m.last_name,
+          email: m.email,
+          phone: m.phone,
+          username: m.username,
+          credentials_set: Boolean(m.credentials_set),
+          membership_status: m.membership_status,
+        }));
+      } catch {
+        toast.error('Failed to load members');
+        return [];
+      }
+    }
+  );
+
+  const loading = section === 'staff' ? staffLoading : membersLoading;
 
   const createUser = async (e: FormEvent) => {
     e.preventDefault();
@@ -145,7 +148,7 @@ export default function UsersPage() {
         password: '',
       });
       setAddOpen(false);
-      await loadStaff();
+      refetchStaff();
       setSection('staff');
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, 'Could not create user'));
@@ -159,7 +162,7 @@ export default function UsersPage() {
     try {
       await api.put(`/users/${id}`, { role });
       toast.success('Role updated');
-      await loadStaff();
+      refetchStaff();
     } catch {
       toast.error('Could not update role');
     }
@@ -170,7 +173,7 @@ export default function UsersPage() {
     try {
       await api.put(`/users/${u.id}`, { is_active: !u.is_active });
       toast.success(u.is_active ? 'User deactivated' : 'User activated');
-      await loadStaff();
+      refetchStaff();
     } catch {
       toast.error('Could not update user');
     }
@@ -228,7 +231,7 @@ export default function UsersPage() {
             ? 'PIN set — member can sign in with phone + this PIN'
             : 'PIN reset to last 4 digits of their phone'
         );
-        await loadMembers();
+        refetchMembers();
       }
       setCredOpen(false);
       setCredTarget(null);
@@ -555,7 +558,7 @@ export default function UsersPage() {
               toast.success('Staff account created');
               setPromoteOpen(false);
               setPromoteMember(null);
-              await loadStaff();
+              refetchStaff();
               setSection('staff');
             } catch (err: unknown) {
               toast.error(getErrorMessage(err, 'Could not promote member'));

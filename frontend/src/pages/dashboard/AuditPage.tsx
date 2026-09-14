@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 interface AuditRow {
   id: number;
@@ -39,28 +39,21 @@ function metaPreview(meta: AuditRow['meta']): string {
 }
 
 export default function AuditPage() {
-  const [rows, setRows] = useState<AuditRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/audit', { params: { limit: 200 } });
-      setRows(asList<AuditRow>(res.data));
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error || 'Failed to load audit log';
-      toast.error(msg);
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch } = useCachedQuery<AuditRow[]>(
+    'audit-log',
+    async () => {
+      try {
+        const res = await api.get('/audit', { params: { limit: 200 } });
+        return asList<AuditRow>(res.data);
+      } catch (err: unknown) {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data
+            ?.error || 'Failed to load audit log';
+        toast.error(msg);
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  );
 
   return (
     <div className="audit-page">
@@ -72,7 +65,7 @@ export default function AuditPage() {
         <button
           type="button"
           className="btn btn-outline btn-sm"
-          onClick={() => void load()}
+          onClick={() => refetch()}
           disabled={loading}
         >
           <RefreshCw size={14} />

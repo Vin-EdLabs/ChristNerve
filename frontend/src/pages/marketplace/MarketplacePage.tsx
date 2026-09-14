@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -11,6 +11,7 @@ import { ListingGrid } from '../../components/marketplace/ListingGrid';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const CLASSIC_HERO =
   'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&w=2000&q=80';
@@ -26,12 +27,19 @@ function asList<T>(payload: unknown, keys: string[] = ['data']): T[] {
   return [];
 }
 
+type ChurchCatPayload = {
+  church: ChurchTenant | null;
+  categories: MarketCategory[];
+};
+
+type ListingsPayload = {
+  listings: MarketListing[];
+  totalPages: number;
+};
+
 export default function MarketplacePage() {
   const slug = getChurchSlug() || 'pka';
   const [params, setParams] = useSearchParams();
-  const [church, setChurch] = useState<ChurchTenant | null>(null);
-  const [categories, setCategories] = useState<MarketCategory[]>([]);
-  const [listings, setListings] = useState<MarketListing[]>([]);
   const category = params.get('category');
   const listingType = params.get('type') === 'professional' ? 'professional' : 'product';
 
@@ -44,8 +52,7 @@ export default function MarketplacePage() {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [extraListings, setExtraListings] = useState<MarketListing[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const setCategory = (slugValue: string | null) => {
@@ -55,35 +62,36 @@ export default function MarketplacePage() {
     setParams(next, { replace: true });
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const { data: churchCatData } = useCachedQuery<ChurchCatPayload>(
+    `market-church:${slug}`,
+    async () => {
       try {
         const [churchRes, catRes] = await Promise.all([
           api.get(`/public/church/${slug}`),
           api.get('/market/categories'),
         ]);
-        if (cancelled) return;
-        setChurch(churchRes.data?.church ?? churchRes.data ?? null);
-        setCategories(asList<MarketCategory>(catRes.data));
+        return {
+          church: churchRes.data?.church ?? churchRes.data ?? null,
+          categories: asList<MarketCategory>(catRes.data),
+        };
       } catch {
-        if (!cancelled) toast.error('Failed to load marketplace');
+        toast.error('Failed to load marketplace');
+        return { church: null, categories: [] };
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
+    },
+    [slug]
+  );
+  const church = churchCatData?.church ?? null;
+  const categories = churchCatData?.categories ?? [];
 
   useEffect(() => {
     const t = setTimeout(() => setQuery(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  const loadListings = useCallback(
-    async (pageNum: number, append: boolean) => {
-      if (append) setLoadingMore(true);
-      else setLoading(true);
+  const { data: page1Data, loading } = useCachedQuery<ListingsPayload>(
+    `market-listings:${slug}:${category || ''}:${query}:${listingType}`,
+    async () => {
       try {
         const res = await api.get('/market/listings', {
           params: {
@@ -91,29 +99,50 @@ export default function MarketplacePage() {
             category: category || undefined,
             search: query || undefined,
             listing_type: listingType,
-            page: pageNum,
+            page: 1,
             limit: 24,
           },
         });
-        const rows = asList<MarketListing>(res.data);
-        const pages = res.data?.pagination?.totalPages ?? 1;
-        setTotalPages(pages);
-        setPage(pageNum);
-        setListings((prev) => (append ? [...prev, ...rows] : rows));
+        return {
+          listings: asList<MarketListing>(res.data),
+          totalPages: res.data?.pagination?.totalPages ?? 1,
+        };
       } catch {
         toast.error('Failed to load listings');
-        if (!append) setListings([]);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        return { listings: [], totalPages: 1 };
       }
     },
     [slug, category, query, listingType]
   );
+  const listings = [...(page1Data?.listings ?? []), ...extraListings];
+  const totalPages = page1Data?.totalPages ?? 1;
 
   useEffect(() => {
-    loadListings(1, false);
-  }, [loadListings]);
+    setPage(1);
+    setExtraListings([]);
+  }, [slug, category, query, listingType]);
+
+  const loadMore = async (pageNum: number) => {
+    setLoadingMore(true);
+    try {
+      const res = await api.get('/market/listings', {
+        params: {
+          church_slug: slug,
+          category: category || undefined,
+          search: query || undefined,
+          listing_type: listingType,
+          page: pageNum,
+          limit: 24,
+        },
+      });
+      setExtraListings((prev) => [...prev, ...asList<MarketListing>(res.data)]);
+      setPage(pageNum);
+    } catch {
+      toast.error('Failed to load listings');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const churchName = church?.name || 'our church';
   const heroImage = church?.banner_url
@@ -195,7 +224,7 @@ export default function MarketplacePage() {
                 <Button
                   variant="outline"
                   loading={loadingMore}
-                  onClick={() => loadListings(page + 1, true)}
+                  onClick={() => loadMore(page + 1)}
                 >
                   Load more
                 </Button>

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { Calendar, MapPin, Plus, Users, UsersRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -8,6 +8,7 @@ import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type CellGroup = {
   id: number;
@@ -38,9 +39,6 @@ function initialsOf(first?: string, last?: string): string {
 }
 
 export default function CellGroupsPage() {
-  const [rows, setRows] = useState<CellGroup[]>([]);
-  const [members, setMembers] = useState<MemberOpt[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<(CellGroup & { members?: MemberOpt[] }) | null>(null);
   const [saving, setSaving] = useState(false);
@@ -52,26 +50,30 @@ export default function CellGroupsPage() {
     location: '',
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/pastoral/cell-groups');
-      setRows(asList<CellGroup>(res.data));
-    } catch {
-      toast.error('Failed to load cell groups');
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch: refetchGroups } = useCachedQuery<CellGroup[]>(
+    'cell-groups',
+    async () => {
+      try {
+        const res = await api.get('/pastoral/cell-groups');
+        return asList<CellGroup>(res.data);
+      } catch {
+        toast.error('Failed to load cell groups');
+        return [];
+      }
     }
-  }, []);
+  );
 
-  useEffect(() => {
-    void load();
-    api
-      .get('/members', { params: { limit: 100, status: 'active' } })
-      .then((res) => setMembers(asList<MemberOpt>(res.data)))
-      .catch(() => undefined);
-  }, [load]);
+  const { data: members = [] } = useCachedQuery<MemberOpt[]>(
+    'cell-group-leader-options',
+    async () => {
+      try {
+        const res = await api.get('/members', { params: { limit: 100, status: 'active' } });
+        return asList<MemberOpt>(res.data);
+      } catch {
+        return [];
+      }
+    }
+  );
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,7 +94,7 @@ export default function CellGroupsPage() {
         meeting_time: '',
         location: '',
       });
-      await load();
+      refetchGroups();
     } catch {
       toast.error('Could not create');
     } finally {
@@ -115,7 +117,7 @@ export default function CellGroupsPage() {
         last_meeting_at: new Date().toISOString(),
       });
       toast.success('Meeting recorded');
-      await load();
+      refetchGroups();
       if (detail?.id === id) await openDetail(id);
     } catch {
       toast.error('Could not record');

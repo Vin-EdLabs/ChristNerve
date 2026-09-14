@@ -203,6 +203,35 @@ function RoomInner({
   const pip = useCallPip(room);
   const chat = useRoomChatChannel();
 
+  // Tells the OS/browser this tab is actively playing real-time audio — on Android Chrome
+  // that's what keeps a backgrounded tab (switched to another app, screen locked) from
+  // being throttled or suspended, and it surfaces a lock-screen/notification "now in a
+  // call" control. iOS Safari enforces much stricter background-tab suspension at the
+  // WebKit level that no web API can override — once Safari itself is backgrounded there
+  // (not just the screen locked), audio can still cut out; that's a platform limitation,
+  // not something fixable from here.
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: room.name,
+        artist: churchName,
+        album: 'Live Room · ChristNerve',
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    } catch {
+      /* MediaSession/MediaMetadata not supported on this browser */
+    }
+    return () => {
+      try {
+        navigator.mediaSession.playbackState = 'none';
+        navigator.mediaSession.metadata = null;
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [room.name, churchName]);
+
   return (
     <>
       {minimized ? (

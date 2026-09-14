@@ -68,6 +68,29 @@ export async function createRoomToken(opts: {
 const PARTICIPANT_COUNT_TTL_MS = 4000;
 const participantCountCache = new Map<string, { count: number; at: number }>();
 
+// The LiveKit Cloud REST call has no built-in timeout — if it's slow or briefly
+// unreachable, an un-timed-out await here blocks the whole /rooms list response behind
+// it (this was the actual cause of the page appearing to "hang loading" for many
+// seconds). Racing it against a short timeout means a slow LiveKit call degrades to a
+// stale/zero count almost instantly instead of stalling the page.
+const PARTICIPANT_COUNT_FETCH_TIMEOUT_MS = 2500;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timed out')), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
+
 /** Live participant count straight from LiveKit — no DB lag, briefly cached to stay fast. */
 export async function getLiveParticipantCount(roomName: string): Promise<number> {
   const cached = participantCountCache.get(roomName);
@@ -75,7 +98,7 @@ export async function getLiveParticipantCount(roomName: string): Promise<number>
     return cached.count;
   }
   try {
-    const rows = await roomService().listParticipants(roomName);
+    const rows = await withTimeout(roomService().listParticipants(roomName), PARTICIPANT_COUNT_FETCH_TIMEOUT_MS);
     participantCountCache.set(roomName, { count: rows.length, at: Date.now() });
     return rows.length;
   } catch {

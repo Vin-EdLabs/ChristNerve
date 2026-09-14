@@ -160,6 +160,21 @@ export const LiveCallProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Closing the tab (or a hard refresh) always ends the call outright — there's no way
+  // for audio to keep playing once this page's JS stops running, so the best we can do
+  // is stop that from happening by accident. Browsers ignore any custom message here and
+  // show their own generic "leave site?" prompt — that's a platform restriction, not
+  // something we control.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [status]);
+
   return (
     <LiveCallContext.Provider
       value={{

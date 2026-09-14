@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
 import { Flame, Heart, MessagesSquare, Play, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -16,6 +16,7 @@ import {
   youtubeEmbedUrl,
   youtubeThumbnail,
 } from '../../utils/youtube';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type FeedPost = {
   id: number;
@@ -34,8 +35,6 @@ type Reaction = 'amen' | 'love' | 'fire';
 export default function ChurchFeedPage() {
   const { accountType, user } = useAuth();
   const canEdit = canEditChurchMedia(accountType, user?.role);
-  const [rows, setRows] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [body, setBody] = useState('');
@@ -49,22 +48,18 @@ export default function ChurchFeedPage() {
     [videoUrl]
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/church-life/feed');
-      setRows(asList<FeedPost>(res.data));
-    } catch {
-      toast.error('Failed to load feed');
-      setRows([]);
-    } finally {
-      setLoading(false);
+  const { data: rows = [], loading, refetch } = useCachedQuery<FeedPost[]>(
+    'church-feed',
+    async () => {
+      try {
+        const res = await api.get('/church-life/feed');
+        return asList<FeedPost>(res.data);
+      } catch {
+        toast.error('Failed to load feed');
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  );
 
   const handleImagePick = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
@@ -100,7 +95,7 @@ export default function ChurchFeedPage() {
       if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview);
       setImagePreview(null);
       setImageFile(null);
-      await load();
+      refetch();
     } catch {
       toast.error('Could not post');
     } finally {
@@ -111,7 +106,7 @@ export default function ChurchFeedPage() {
   const react = async (id: number, reaction: Reaction) => {
     try {
       await api.post(`/church-life/feed/${id}/react`, { reaction });
-      await load();
+      refetch();
     } catch {
       toast.error('Could not react');
     }
@@ -122,7 +117,7 @@ export default function ChurchFeedPage() {
     try {
       await api.delete(`/church-life/feed/${id}`);
       toast.success('Deleted');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not delete');
     }

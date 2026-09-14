@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarCheck } from 'lucide-react';
 import api from '../../services/api';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Spinner } from '../../components/ui/Spinner';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 interface AttendanceRow {
   id: number;
@@ -21,30 +21,28 @@ function asList<T>(payload: unknown): T[] {
   return [];
 }
 
-export default function MyAttendancePage() {
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState<AttendanceRow[]>([]);
-  const [presentMonth, setPresentMonth] = useState(0);
+type MyAttendancePayload = {
+  rows: AttendanceRow[];
+  presentMonth: number;
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
+export default function MyAttendancePage() {
+  const { data, loading } = useCachedQuery<MyAttendancePayload>(
+    'my-attendance',
+    async () => {
       try {
         const res = await api.get('/attendance/mine');
-        if (cancelled) return;
-        setRows(asList<AttendanceRow>(res.data));
-        setPresentMonth(Number(res.data?.stats?.present_this_month || 0));
+        return {
+          rows: asList<AttendanceRow>(res.data),
+          presentMonth: Number(res.data?.stats?.present_this_month || 0),
+        };
       } catch {
-        if (!cancelled) setRows([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+        return { rows: [], presentMonth: 0 };
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    }
+  );
+  const rows = data?.rows ?? [];
+  const presentMonth = data?.presentMonth ?? 0;
 
   if (loading) return <Spinner fullPage />;
 

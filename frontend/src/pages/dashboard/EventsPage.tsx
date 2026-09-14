@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -10,6 +10,7 @@ import { Modal } from '../../components/ui/Modal';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Badge } from '../../components/ui/Badge';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const EVENT_TYPES = [
   'Service',
@@ -56,29 +57,24 @@ function canManageEvents(accountType: string | null, role?: string | null) {
 export default function EventsPage() {
   const { user, accountType } = useAuth();
   const canManage = canManageEvents(accountType, user?.role);
-  const [loading, setLoading] = useState(true);
-  const [events, setEvents] = useState<ChurchEvent[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ChurchEvent | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/events', { params: { upcoming: 'false' } });
-      setEvents(asList<ChurchEvent>(res.data));
-    } catch {
-      toast.error('Failed to load events');
-    } finally {
-      setLoading(false);
+  const { data: events = [], loading, refetch } = useCachedQuery<ChurchEvent[]>(
+    'events',
+    async () => {
+      try {
+        const res = await api.get('/events', { params: { upcoming: 'false' } });
+        return asList<ChurchEvent>(res.data);
+      } catch {
+        toast.error('Failed to load events');
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
 
   const openCreate = () => {
     setEditing(null);
@@ -110,7 +106,7 @@ export default function EventsPage() {
       await api.delete(`/events/${ev.id}`);
       toast.success('Event deleted');
       if (editing?.id === ev.id) setOpen(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data
@@ -144,7 +140,7 @@ export default function EventsPage() {
         toast.success('Event created');
       }
       setOpen(false);
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

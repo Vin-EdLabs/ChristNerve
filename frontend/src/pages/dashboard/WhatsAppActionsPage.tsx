@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { whatsappShareUrl } from '../../utils/youtube';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Templates = Record<string, string>;
 
@@ -33,34 +34,30 @@ const LABELS: { key: string; title: string; desc: string }[] = [
 ];
 
 export default function WhatsAppActionsPage() {
-  const [loading, setLoading] = useState(true);
-  const [templates, setTemplates] = useState<Templates>({});
   const [name, setName] = useState('');
   const [serviceDate, setServiceDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/church-life/whatsapp-templates', {
-        params: {
-          name: name.trim() || undefined,
-          service_date: serviceDate || undefined,
-        },
-      });
-      const d = res.data?.data || res.data || {};
-      setTemplates(d.filled || d.templates || d);
-    } catch {
-      toast.error('Failed to load templates');
-    } finally {
-      setLoading(false);
-    }
-  }, [name, serviceDate]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const { data: templates = {}, loading, refetch } = useCachedQuery<Templates>(
+    `whatsapp-templates:${name.trim()}:${serviceDate}`,
+    async () => {
+      try {
+        const res = await api.get('/church-life/whatsapp-templates', {
+          params: {
+            name: name.trim() || undefined,
+            service_date: serviceDate || undefined,
+          },
+        });
+        const d = res.data?.data || res.data || {};
+        return d.filled || d.templates || d;
+      } catch {
+        toast.error('Failed to load templates');
+        return {};
+      }
+    },
+    [name, serviceDate]
+  );
 
   const copyAndOpen = async (text: string) => {
     if (!text) return;
@@ -97,7 +94,7 @@ export default function WhatsAppActionsPage() {
           value={serviceDate}
           onChange={(e) => setServiceDate(e.target.value)}
         />
-        <Button type="button" variant="outline" onClick={() => void load()}>
+        <Button type="button" variant="outline" onClick={() => refetch()}>
           Refresh texts
         </Button>
       </div>

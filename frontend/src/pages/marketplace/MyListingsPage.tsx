@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check, Copy, Eye, Pencil, Plus, Store, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 const PLACEHOLDER =
   'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&q=80';
@@ -38,31 +39,32 @@ function priceLabel(listing: MarketListing) {
 export default function MyListingsPage() {
   const navigate = useNavigate();
   const { tenant } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [listings, setListings] = useState<MarketListing[]>([]);
-  const [storefrontSlug, setStorefrontSlug] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/market/my-listings');
-      setListings(asList<MarketListing>(res.data));
-    } catch {
-      toast.error('Failed to load your listings');
-      setListings([]);
-    } finally {
-      setLoading(false);
+  const { data: listings = [], loading, refetch } = useCachedQuery<MarketListing[]>(
+    'my-listings',
+    async () => {
+      try {
+        const res = await api.get('/market/my-listings');
+        return asList<MarketListing>(res.data);
+      } catch {
+        toast.error('Failed to load your listings');
+        return [];
+      }
     }
-  }, []);
+  );
 
-  useEffect(() => {
-    load();
-    api
-      .get('/market/my-storefront')
-      .then((res) => setStorefrontSlug(res.data?.marketplace_slug || null))
-      .catch(() => undefined);
-  }, [load]);
+  const { data: storefrontSlug = null } = useCachedQuery<string | null>(
+    'my-storefront-slug',
+    async () => {
+      try {
+        const res = await api.get('/market/my-storefront');
+        return res.data?.marketplace_slug || null;
+      } catch {
+        return null;
+      }
+    }
+  );
 
   const storefrontLink =
     storefrontSlug && tenant?.slug ? churchDomainUrl(tenant.slug, `/shop/${storefrontSlug}`) : null;
@@ -81,7 +83,7 @@ export default function MyListingsPage() {
     try {
       await api.delete(`/market/listings/${listing.id}`);
       toast.success('Listing removed');
-      await load();
+      refetch();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data

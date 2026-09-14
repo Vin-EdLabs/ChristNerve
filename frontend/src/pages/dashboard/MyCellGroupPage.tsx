@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Spinner } from '../../components/ui/Spinner';
 import { resolveMediaUrl } from '../../utils/mediaUrl';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type RosterMember = {
   id: number;
@@ -30,34 +31,28 @@ type CellGroupInfo = {
 
 export default function MyCellGroupPage() {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [groups, setGroups] = useState<CellGroupInfo[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
+  const { data: groups = [], loading } = useCachedQuery<CellGroupInfo[]>(
+    'my-cell-group',
+    async () => {
       try {
         const res = await api.get('/pastoral/cell-groups/mine');
-        if (cancelled) return;
-        const list: CellGroupInfo[] = Array.isArray(res.data?.cell_groups)
+        return Array.isArray(res.data?.cell_groups)
           ? res.data.cell_groups
           : res.data?.cell_group
             ? [res.data.cell_group]
             : [];
-        setGroups(list);
-        setActiveId((prev) => (prev && list.some((g) => g.id === prev) ? prev : list[0]?.id ?? null));
       } catch {
-        if (!cancelled) setGroups([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+        return [];
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    }
+  );
+
+  useEffect(() => {
+    setActiveId((prev) => (prev && groups.some((g) => g.id === prev) ? prev : groups[0]?.id ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups]);
 
   if (loading) return <Spinner fullPage />;
 

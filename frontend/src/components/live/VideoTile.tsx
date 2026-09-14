@@ -55,7 +55,7 @@ export function VideoTile({
       {hasVideo ? (
         <VideoTrack
           trackRef={trackRef}
-          className={`vtile-video${isScreenShare ? ' is-screenshare' : ''}`}
+          className={`vtile-video${isScreenShare ? ' is-screenshare' : ''}${isSelf && !isScreenShare ? ' is-mirrored' : ''}`}
         />
       ) : (
         <div className="vtile-placeholder">
@@ -134,6 +134,10 @@ export function VideoTile({
         .vtile.is-compact .vtile-placeholder-role { display: none; }
         .vtile-video { width: 100%; height: 100%; object-fit: cover; display: block; }
         .vtile-video.is-screenshare { object-fit: contain; background: #000; }
+        /* Mirror only your own camera preview — like looking in a mirror — the same
+           way Zoom/Meet/FaceTime do. Everyone else still sees you the right way round;
+           this is a local-only flip of your own tile, never sent over the wire. */
+        .vtile-video.is-mirrored { transform: scaleX(-1); }
         .vtile-placeholder {
           width: 100%; height: 100%; display: flex; flex-direction: column;
           align-items: center; justify-content: center; gap: 8px; background: #17151a;

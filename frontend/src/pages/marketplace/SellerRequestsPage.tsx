@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, ShoppingBag, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { Button } from '../../components/ui/Button';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 interface SellerRequest {
   id: number;
@@ -27,33 +28,27 @@ function asList<T>(payload: unknown): T[] {
 }
 
 export default function SellerRequestsPage() {
-  const [loading, setLoading] = useState(true);
-  const [requests, setRequests] = useState<SellerRequest[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get('/market/seller-requests', { params: { status: 'pending' } });
-      setRequests(asList<SellerRequest>(res.data));
-    } catch {
-      toast.error('Failed to load seller requests');
-      setRequests([]);
-    } finally {
-      setLoading(false);
+  const { data: requests = [], loading, setData } = useCachedQuery<SellerRequest[]>(
+    'seller-requests',
+    async () => {
+      try {
+        const res = await api.get('/market/seller-requests', { params: { status: 'pending' } });
+        return asList<SellerRequest>(res.data);
+      } catch {
+        toast.error('Failed to load seller requests');
+        return [];
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  );
 
   const decide = async (memberId: number, status: 'approved' | 'rejected') => {
     setBusyId(memberId);
     try {
       await api.put(`/market/seller-requests/${memberId}`, { status });
       toast.success(status === 'approved' ? 'Seller approved' : 'Request declined');
-      setRequests((prev) => prev.filter((r) => r.id !== memberId));
+      setData((prev) => (prev || []).filter((r) => r.id !== memberId));
     } catch {
       toast.error('Could not update this request');
     } finally {

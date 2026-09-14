@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 
-import { Radio } from 'lucide-react';
+import { Play, Radio } from 'lucide-react';
 
 import toast from 'react-hot-toast';
 
@@ -24,8 +24,10 @@ import {
 
   extractYoutubeId,
   youtubeEmbedUrl,
+  youtubeThumbnail,
 
 } from '../../utils/youtube';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 
 
@@ -52,61 +54,51 @@ export default function LiveStreamPage() {
 
   const canEdit = canEditChurchMedia(accountType, user?.role);
 
-  const [loading, setLoading] = useState(true);
-
   const [saving, setSaving] = useState(false);
 
   const [url, setUrl] = useState('');
 
   const [active, setActive] = useState(false);
 
-  const [history, setHistory] = useState<PastStream[]>([]);
-
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  const [watching, setWatching] = useState(false);
 
-
-  const load = useCallback(async () => {
-
-    setLoading(true);
-
-    try {
-
-      const res = await api.get('/church-life/live');
-
-      const data = (res.data?.data || res.data || {}) as LiveState;
-
-      setUrl(data.live_stream_url || '');
-
-      setActive(!!data.live_stream_active);
-
-    } catch {
-
-      toast.error('Failed to load live stream');
-
-    } finally {
-
-      setLoading(false);
-
+  const { data: liveData, loading, setData } = useCachedQuery<LiveState>(
+    'live-stream',
+    async () => {
+      try {
+        const res = await api.get('/church-life/live');
+        return (res.data?.data || res.data || {}) as LiveState;
+      } catch {
+        toast.error('Failed to load live stream');
+        return {};
+      }
     }
+  );
 
-  }, []);
-
-  const loadHistory = useCallback(async () => {
-    try {
-      const res = await api.get('/church-life/live/history');
-      setHistory(res.data?.data || []);
-    } catch {
-      /* history is a nice-to-have, fail quietly */
+  const { data: history = [], refetch: refetchHistory } = useCachedQuery<PastStream[]>(
+    'live-stream-history',
+    async () => {
+      try {
+        const res = await api.get('/church-life/live/history');
+        return res.data?.data || [];
+      } catch {
+        /* history is a nice-to-have, fail quietly */
+        return [];
+      }
     }
-  }, []);
+  );
 
   useEffect(() => {
-
-    void load();
-    void loadHistory();
-
-  }, [load, loadHistory]);
+    if (liveData) {
+      setUrl((prev) => {
+        if (liveData.live_stream_url !== prev) setWatching(false);
+        return liveData.live_stream_url || '';
+      });
+      setActive(!!liveData.live_stream_active);
+    }
+  }, [liveData]);
 
 
 
@@ -138,13 +130,15 @@ export default function LiveStreamPage() {
 
       setActive(!!data.live_stream_active);
 
+      setData(data);
+
       toast.success(
 
         data.live_stream_active ? 'Live is ON — members notified' : 'Saved'
 
       );
 
-      void loadHistory();
+      refetchHistory();
 
     } catch {
 
@@ -205,24 +199,47 @@ export default function LiveStreamPage() {
         <section className="live-stage">
 
           <div className="live-watch-frame">
+            {watching ? (
+              <iframe
 
-            <iframe
+                title="Live stream"
 
-              title="Live stream"
+                src={youtubeEmbedUrl(ytId, { autoplay: true })}
 
-              src={youtubeEmbedUrl(ytId, { autoplay: true })}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
 
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
 
-              allowFullScreen
+                loading="eager"
 
-              loading="eager"
+                referrerPolicy="strict-origin-when-cross-origin"
 
-              referrerPolicy="strict-origin-when-cross-origin"
+                className="youtube-embed"
 
-              className="youtube-embed"
-
-            />
+              />
+            ) : (
+              // Tap-to-play instead of an eager autoplaying iframe: browsers silently
+              // block unmuted autoplay without a real user gesture, so the embedded
+              // player used to sit there buffering/blocked for a long time — which is
+              // exactly what read as "the page is stuck loading". A poster + explicit
+              // click both makes the page paint instantly and gives YouTube a genuine
+              // gesture to autoplay against once tapped.
+              <button
+                type="button"
+                className="live-watch-poster"
+                onClick={() => setWatching(true)}
+                aria-label="Play live stream"
+              >
+                <img src={youtubeThumbnail(ytId)} alt="" className="live-watch-poster-img" />
+                <span className="live-watch-poster-veil" />
+                <span className="live-on-card">
+                  <span className="live-dot" /> LIVE
+                </span>
+                <span className="live-play">
+                  <Play size={26} fill="currentColor" />
+                </span>
+              </button>
+            )}
 
           </div>
 
@@ -413,6 +430,23 @@ export default function LiveStreamPage() {
           width: 100%;
           height: 100%;
           border: 0;
+        }
+        .live-watch-poster {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          border: 0; padding: 0; margin: 0; cursor: pointer; background: #000;
+        }
+        .live-watch-poster-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .live-watch-poster-veil {
+          position: absolute; inset: 0;
+          background: linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,.15) 40%, rgba(0,0,0,.55) 100%);
+        }
+        .live-watch-poster .live-on-card {
+          position: absolute; left: 14px; top: 14px;
+          display: inline-flex; align-items: center; gap: 6px;
+        }
+        .live-watch-poster .live-play { width: 72px; height: 72px; }
+        @media (hover: hover) {
+          .live-watch-poster:hover .live-play { transform: translate(-50%, -50%) scale(1.08); }
         }
 
         .live-card {

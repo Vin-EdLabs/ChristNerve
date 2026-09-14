@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { BookOpen, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -9,6 +9,7 @@ import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/SkeletonCard';
 import { asList, canEditChurchMedia } from '../../utils/churchLife';
+import { useCachedQuery } from '../../utils/useCachedQuery';
 
 type Devotional = {
   id: number;
@@ -27,36 +28,39 @@ const empty = {
   devote_date: new Date().toISOString().slice(0, 10),
 };
 
+type DevotionalsPayload = {
+  today: Devotional | null;
+  rows: Devotional[];
+};
+
 export default function DevotionalsPage() {
   const { accountType, user } = useAuth();
   const canEdit = canEditChurchMedia(accountType, user?.role);
-  const [today, setToday] = useState<Devotional | null>(null);
-  const [rows, setRows] = useState<Devotional[]>([]);
-  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(empty);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [t, list] = await Promise.all([
-        api.get('/church-life/devotionals/today').catch(() => ({ data: null })),
-        api.get('/church-life/devotionals'),
-      ]);
-      const tData = t.data?.data ?? t.data ?? null;
-      setToday(tData && tData.id ? tData : null);
-      setRows(asList<Devotional>(list.data));
-    } catch {
-      toast.error('Failed to load devotionals');
-    } finally {
-      setLoading(false);
+  const { data, loading, refetch } = useCachedQuery<DevotionalsPayload>(
+    'devotionals',
+    async () => {
+      try {
+        const [t, list] = await Promise.all([
+          api.get('/church-life/devotionals/today').catch(() => ({ data: null })),
+          api.get('/church-life/devotionals'),
+        ]);
+        const tData = t.data?.data ?? t.data ?? null;
+        return {
+          today: tData && tData.id ? tData : null,
+          rows: asList<Devotional>(list.data),
+        };
+      } catch {
+        toast.error('Failed to load devotionals');
+        return { today: null, rows: [] };
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  );
+  const today = data?.today ?? null;
+  const rows = data?.rows ?? [];
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -76,7 +80,7 @@ export default function DevotionalsPage() {
       toast.success('Devotional saved');
       setOpen(false);
       setForm(empty);
-      await load();
+      refetch();
     } catch {
       toast.error('Could not save');
     } finally {
@@ -89,7 +93,7 @@ export default function DevotionalsPage() {
     try {
       await api.delete(`/church-life/devotionals/${id}`);
       toast.success('Deleted');
-      await load();
+      refetch();
     } catch {
       toast.error('Could not delete');
     }

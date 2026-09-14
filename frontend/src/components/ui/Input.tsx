@@ -107,9 +107,10 @@ export const Select: React.FC<SelectProps> = ({
         {...props}
       >
         {placeholder && (
-          <option value="" disabled>
-            {placeholder}
-          </option>
+          // Not disabled — a disabled option can be shown initially but can never be
+          // clicked back to once the user picks something else, which made an "optional"
+          // field feel stuck/required the moment you touched the dropdown.
+          <option value="">{placeholder}</option>
         )}
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
